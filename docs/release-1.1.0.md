@@ -24,4 +24,4 @@ Windows 10 1809+ / Windows 11 x64，面向 Windows 微信 4.x。微信更新可�
 
 [使用指南](https://github.com/mofan6/Moect/blob/main/docs/usage.md) · [项目介绍](https://github.com/mofan6/Moect) · [反馈问题](https://github.com/mofan6/Moect/issues)
 
-本项目按 GPL-3.0 发布，保留 WeChatMsg、4.x 适配版与 QQ Chat Exporter 等上游来源和许可证。
+本项目按 GPL-3.0 发布。

@@ -68,8 +68,15 @@ python build.py
 
 详细说明见 [构建指南](docs/build.md)，宣传图的可重复生成脚本在 `docs/tools/render_assets.py`。
 
-## 致谢与许可证
+## 许可证
 
-Moect 基于 [WeChatMsg](https://github.com/LC044/WeChatMsg)、[WeChatMsg 4.x 适配版](https://github.com/chenanhan230-del/WeChatMsg-4x) 的相关工作，直接复用和改造了 [QQ Chat Exporter](https://github.com/shuakami/qq-chat-exporter) 的界面组件及部分导出设计。感谢原作者及贡献者。
+本项目按 [GPL-3.0](LICENSE) 发布。原始著作权与依赖许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 和 [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES)。Moect 是独立的社区项目，与微信、腾讯及下列项目不存在官方隶属关系。
 
-本项目按 [GPL-3.0](LICENSE) 发布。原始著作权与依赖许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 和 [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES)。Moect 是独立的社区项目，与微信、腾讯及上述项目不存在官方隶属关系。
+## 致谢
+
+感谢以下开源项目及其作者和贡献者，为 Moect 提供了重要基础：
+
+- **[QQ Chat Exporter](https://github.com/shuakami/qq-chat-exporter)**：Moect 直接复用和改造了其界面组件，并参考了会话管理、导出流程与聊天记录展示的设计。
+- **[WeChatMsg](https://github.com/LC044/WeChatMsg)**：为微信聊天记录读取、解析与导出提供了重要基础和参考。
+
+同时感谢 [WeChatMsg 4.x 适配版](https://github.com/chenanhan230-del/WeChatMsg-4x) 及其他依赖项目的作者与贡献者。开源社区的分享让 Moect 得以实现。
