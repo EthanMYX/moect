@@ -51,24 +51,12 @@ export interface BatchExportConfig {
   timeRange: 'all' | 'recent' | 'custom'
   customStartDate?: string
   customEndDate?: string
-  // 高级选项
-  streamingZipMode: boolean
-  exportAsZip: boolean
-  embedAvatarsAsBase64: boolean
-  /** Issue #311: 自包含 HTML（资源 base64 内联）。 */
-  embedResourcesAsDataUri: boolean
   includeSystemMessages: boolean
-  filterPureImageMessages: boolean
-  preferGroupMemberName: boolean
-  debugExport: boolean
-  /** Issue #341: 仅保留元数据、跳过下载的资源类型 */
-  skipDownloadResourceTypes?: Array<'image' | 'video' | 'audio' | 'file'>
+  quickExport: boolean
+  includeAvatars: boolean
+  skipDownloadResourceTypes?: SkipDownloadResourceType[]
   outputDir: string
   keywords: string
-  excludeUserUins: string
-  useNameInFileName: boolean
-  /** Issue #134: 友好文件名格式 `<名称>(<QQ号>).<扩展名>` */
-  useFriendlyFileName?: boolean
 }
 
 export interface BatchExportProgress {
@@ -84,6 +72,10 @@ export interface BatchExportProgress {
 }
 
 
+function ExportSwitch({id,title,description,checked,disabled,onChange}:{id:string,title:string,description:string,checked:boolean,disabled?:boolean,onChange:(value:boolean)=>void}) {
+  return <div className="flex items-center justify-between gap-6 px-5 py-4"><div className="min-w-0"><label htmlFor={id} className="block text-[13px] font-medium cursor-pointer">{title}</label><p id={id+'-description'} className="text-[12px] text-muted-foreground leading-relaxed mt-1">{description}</p></div><Switch id={id} aria-describedby={id+'-description'} checked={checked} disabled={disabled} onCheckedChange={onChange}/></div>
+}
+
 export function BatchExportDialog({ open, onOpenChange, items, onExport }: BatchExportDialogProps) {
   const didInitRef = useRef(false)
   const [format, setFormat] = useState<'HTML' | 'TXT' | 'JSON' | 'CSV' | 'JSONL' | 'MD'>('HTML')
@@ -93,24 +85,13 @@ export function BatchExportDialog({ open, onOpenChange, items, onExport }: Batch
   const [dateError, setDateError] = useState<string | null>(null)
   const [isExporting, setIsExporting] = useState(false)
   
-  // 高级选项状态
-  const [streamingZipMode, setStreamingZipMode] = useState(false)
-  const [exportAsZip, setExportAsZip] = useState(false)
-  const [embedAvatarsAsBase64, setEmbedAvatarsAsBase64] = useState(false)
-  // Issue #311: 自包含 HTML
-  const [embedResourcesAsDataUri, setEmbedResourcesAsDataUri] = useState(false)
   const [includeSystemMessages, setIncludeSystemMessages] = useState(true)
-  const [filterPureImageMessages, setFilterPureImageMessages] = useState(false) // HTML默认false
-  const [preferGroupMemberName, setPreferGroupMemberName] = useState(true)
-  const [debugExport, setDebugExport] = useState(false)
-  // Issue #344：批量导出也支持按资源类型逐项跳过下载。
+  const [quickExport, setQuickExport] = useState(false)
+  const [includeAvatars, setIncludeAvatars] = useState(true)
   const [skipDownloadResourceTypes, setSkipDownloadResourceTypes] = useState<SkipDownloadResourceType[] | undefined>(undefined)
   const [outputDir, setOutputDir] = useState('')
   const [keywords, setKeywords] = useState('')
-  const [excludeUserUins, setExcludeUserUins] = useState('')
-  const [useNameInFileName, setUseNameInFileName] = useState(true)
   // Issue #134: 友好文件名格式
-  const [useFriendlyFileName, setUseFriendlyFileName] = useState(false)
   
   const [progress, setProgress] = useState<BatchExportProgress>({
     current: 0,
@@ -130,19 +111,12 @@ export function BatchExportDialog({ open, onOpenChange, items, onExport }: Batch
       setCustomEndDate('')
       setDateError(null)
       setIsExporting(false)
-      setStreamingZipMode(false)
-      setExportAsZip(false)
-      setEmbedAvatarsAsBase64(false)
-      setEmbedResourcesAsDataUri(false) // Issue #311
       setIncludeSystemMessages(true)
-      setFilterPureImageMessages(false)
-      setPreferGroupMemberName(true)
+      setQuickExport(false)
+      setIncludeAvatars(true)
       setSkipDownloadResourceTypes(undefined)
       setOutputDir('')
       setKeywords('')
-      setExcludeUserUins('')
-      setUseNameInFileName(true)
-      setUseFriendlyFileName(false)
       setProgress({
         current: 0,
         total: items.length,
@@ -160,25 +134,6 @@ export function BatchExportDialog({ open, onOpenChange, items, onExport }: Batch
     }
   }, [open])
 
-  // 格式改变时自动调整filterPureImageMessages默认值，并重置格式专有选项
-  useEffect(() => {
-    if (format === 'HTML') {
-      setFilterPureImageMessages(false)
-    } else if (format === 'JSON' || format === 'TXT') {
-      setFilterPureImageMessages(true)
-    }
-    // 重置格式专有选项
-    if (format !== 'HTML') {
-      setExportAsZip(false)
-      setEmbedResourcesAsDataUri(false) // Issue #311: 仅 HTML 可用
-      if (format !== 'JSON') {
-        setStreamingZipMode(false)
-      }
-    }
-    if (format !== 'JSON') {
-      setEmbedAvatarsAsBase64(false)
-    }
-  }, [format])
 
 
   useEffect(() => {
@@ -224,26 +179,12 @@ export function BatchExportDialog({ open, onOpenChange, items, onExport }: Batch
     })
 
     const config: BatchExportConfig = {
-      format,
-      timeRange,
+      format, timeRange,
       customStartDate: timeRange === 'custom' ? customStartDate : undefined,
       customEndDate: timeRange === 'custom' ? customEndDate : undefined,
-      streamingZipMode,
-      exportAsZip,
-      embedAvatarsAsBase64,
-      embedResourcesAsDataUri,
-      includeSystemMessages,
-      filterPureImageMessages,
-      preferGroupMemberName,
-      debugExport,
-      ...(!filterPureImageMessages && skipDownloadResourceTypes && skipDownloadResourceTypes.length > 0 && {
-        skipDownloadResourceTypes,
-      }),
-      outputDir,
-      keywords,
-      excludeUserUins,
-      useNameInFileName,
-      useFriendlyFileName
+      includeSystemMessages, quickExport, includeAvatars,
+      skipDownloadResourceTypes: skipDownloadResourceTypes || [],
+      outputDir, keywords,
     }
 
     try {
@@ -419,11 +360,27 @@ export function BatchExportDialog({ open, onOpenChange, items, onExport }: Batch
                 </div>
               </section>
 
+              <section>
+                <h2 className={SECTION_TITLE}>导出内容</h2>
+                <div className="rounded-2xl border border-black/[0.06] dark:border-white/[0.08] divide-y divide-black/[0.05] dark:divide-white/[0.06]">
+                  <ExportSwitch id="include-system-messages" title="包含系统消息" description="保留群通知、撤回提示等系统消息；关闭后也会过滤合并转发中的系统消息。" checked={includeSystemMessages} onChange={setIncludeSystemMessages} disabled={isExporting}/>
+                  <ExportSwitch id="quick-export" title="快速导出（跳过全部资源）" description="保留消息与卡片信息，不复制或下载附件、缩略图和头像，不进行媒体解密与转码。" checked={quickExport} onChange={setQuickExport} disabled={isExporting}/>
+                  {([
+                    {type:'file', title:'仅保留文件元数据，不导出文件', description:'保留已有文件名、大小等信息，不复制或下载文档和其他文件；其他媒体按各自开关处理。'},
+                    {type:'image', title:'不导出图片和动画表情', description:'跳过图片、GIF 表情和卡片缩略图的复制、下载及解密。头像由下方开关单独控制。'},
+                    {type:'video', title:'不导出视频', description:'不复制、下载或转码视频，减少磁盘占用；保留视频消息及已有信息。'},
+                    {type:'audio', title:'不导出语音', description:'不提取或下载语音文件，保留对应的语音消息记录。'},
+                  ] as const).map(option=><ExportSwitch key={option.type} id={'skip-'+option.type} title={option.title} description={option.description} checked={quickExport || !!skipDownloadResourceTypes?.includes(option.type)} disabled={isExporting || quickExport} onChange={enabled=>setSkipDownloadResourceTypes(current=>toggleSkipResourceType(current,option.type,enabled))}/>)}
+                  <ExportSwitch id="include-avatars" title="导出头像" description="将可用头像一起保存到归档中；关闭后使用姓名首字作为占位。" checked={includeAvatars && !quickExport} onChange={setIncludeAvatars} disabled={isExporting || quickExport}/>
+                </div>
+                <p className="text-[12px] text-muted-foreground leading-relaxed mt-3">以上设置同样作用于引用回复与合并转发中的资源。主动跳过的附件会单独标注，不会记作下载失败。</p>
+              </section>
+
               {/* 高级选项 */}
               <section>
                 <h2 className={SECTION_TITLE}>高级选项</h2>
                 <div className="space-y-6">
-                <p className="text-[12px] text-muted-foreground leading-relaxed">头像和本机附件随记录保存；HTML 可离线查看图片、视频与分享卡片。未下载或未能解密的附件会标注原因并保留可用原文件。</p>
+                <p className="text-[12px] text-muted-foreground leading-relaxed">按上方设置保存可用资源。HTML 可离线阅读；资源未取得或解密失败时会说明原因。</p>
                   <div className="space-y-2.5">
                     <label className="block text-[12px] font-medium text-muted-foreground pl-1">导出路径</label>
                     <div className="flex gap-2">

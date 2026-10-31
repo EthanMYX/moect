@@ -1,5 +1,5 @@
 export const EXPORT_OPTION_TOOLTIPS = {
-  allMessages: "选择“全部消息”后，QCE 将导出当前会话中的全部消息。",
+  allMessages: "选择“全部消息”后，Moect 将导出当前会话中的全部消息。",
   streaming:
     "启用后，QCE 会在读取消息的同时写入文件，以降低大规模导出时的内存占用。该选项更适合消息量较大的会话。",
   includeSystemMessages:

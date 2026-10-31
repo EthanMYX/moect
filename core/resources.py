@@ -20,6 +20,7 @@ from .avatars import AvatarStore,image_type
 from .media_codec import ImageKeys,MediaCodec,media_type,encrypted_media_variants
 from wx4.reader import reference_text
 from wx4.forward import build_forward
+from .export_options import RESOURCE_TYPES,export_preferences,is_system_message
 
 HASH=re.compile(r'(?i)(?<![a-f0-9])[a-f0-9]{32}(?![a-f0-9])')
 
@@ -42,8 +43,10 @@ def thumbnail_candidate(path,hints):
 
 
 class ResourceStore:
-    def __init__(self,data,session,destination,cancel=lambda:None,status=None):
+    def __init__(self,data,session,destination,cancel=lambda:None,status=None,options=None):
         self.data=data;self.session=session;self.out=Path(destination);self.cancel=cancel
+        self.preferences=export_preferences(options or {})
+        self.skipped=set(self.preferences['skip_resource_types'])
         self.avatars=AvatarStore(data,Path(data.root).parent/'avatar-cache')
         self.tmp=tempfile.TemporaryDirectory(prefix='wce-resource-')
         self.index=sqlite3.connect(str(Path(self.tmp.name)/'index.db'))
@@ -57,7 +60,7 @@ class ResourceStore:
         ''')
         self.indexed=False;self.refs_indexed=False;self.messages_indexed=False;self.forward_indexed=False;self.forward_remaining=5000
         self.codec=MediaCodec(cancel);self.keys=ImageKeys(data,cancel,self.codec,status)
-        self.stats={'available':0,'missing':0,'encrypted':0,'unsupported':0,'corrupt':0}
+        self.stats={'available':0,'missing':0,'encrypted':0,'unsupported':0,'corrupt':0,'skipped':0}
         self.failed_downloads=set()
         self.download_outcomes={};self.prefer_direct=False
         self.report=open(self.out/'resource-report.jsonl','w',encoding='utf-8')
@@ -303,6 +306,8 @@ class ResourceStore:
         seen=set();diagnostics=[]
         for hint in hints.get('urls') or []:
             role=hint.get('role','main')
+            if role in ('thumbnail','source_icon') and 'image' in self.skipped:
+                self._skip(msg,'卡片图片');continue
             identity=(hint['url'],role,bool(hint.get('encrypted')))
             if identity in seen:continue
             seen.add(identity)
@@ -374,8 +379,9 @@ class ResourceStore:
                 'message_content':quote.get('content') or quote.get('text',''),'compress_content':None,'packed_info_data':None}
             reference=self.data._build_msg(r,{1:quote.get('sender_wxid','')},self.session,0)
             reference['sender']=quote.get('sender') or reference['sender']
+        if not self.preferences['include_system_messages'] and is_system_message(reference):return None
         reference=self.enrich(reference,depth=depth+1)
-        return {k:reference.get(k) for k in ('server_id','sender','sender_wxid','time_str','text','kind','extra','resources','resource_notice','forward')}
+        return {k:reference.get(k) for k in ('server_id','sender','sender_wxid','time_str','text','kind','extra','avatar','resources','resource_status','resource_notice','forward')}
 
     def _forward_avatar(self,msg):
         url=msg.get('avatar_url') or ''
@@ -390,20 +396,30 @@ class ResourceStore:
         if not path.exists():path.write_bytes(image)
         return path.relative_to(self.out).as_posix()
 
+    def _skip(self,msg,label):
+        if msg.get('resource_status')!='skipped':self.stats['skipped']+=1
+        msg['resource_status']='skipped'
+        msg['resource_notice']='已按导出设置跳过'+label+'，保留消息与已有元数据。'
+
     def enrich(self,msg,depth=0):
+        self.cancel()
         if depth==0:self.forward_remaining=5000
         msg=dict(msg);msg['extra']=dict(msg.get('extra') or {})
-        msg['avatar']=self.avatars.export(msg.get('sender_wxid',''),self.out)
-        if not msg['avatar'] and msg.get('_forward_item'):msg['avatar']=self._forward_avatar(msg)
+        msg['avatar']=self.avatars.export(msg.get('sender_wxid',''),self.out) if self.preferences['include_avatars'] else ''
+        if self.preferences['include_avatars'] and not msg['avatar'] and msg.get('_forward_item'):msg['avatar']=self._forward_avatar(msg)
         kind=msg.get('kind');resources=[];fallback=None;image_diagnostics={};fallback_diagnostics={}
-        if kind=='emoji':
+        category={'image':'image','emoji':'image','video':'video','voice':'audio','file':'file'}.get(kind)
+        skip=category in self.skipped
+        skip_all=self.skipped==set(RESOURCE_TYPES)
+        if skip:self._skip(msg,{'image':'图片/动画表情','video':'视频','audio':'语音','file':'文件内容'}[category])
+        if kind=='emoji' and not skip:
             original=msg.get('_media') or {}
             msg['_media']={name:list(original.get(name) or []) for name in ('keys','hashes','urls','paths','thumbnail_hashes','main_hashes')}
             self._emoticon_hints(msg)
-        if kind=='voice':
+        if kind=='voice' and not skip:
             blob=self.data.voice_blob(self.session,msg.get('server_id'))
             if blob:resources.append(self._copy('voice_'+str(msg['server_id'])+'.silk','audio',blob,'.silk'))
-        if kind in ('image','emoji','video','file'):
+        if kind in ('image','emoji','video','file') and not skip:
             candidates=self._candidates(msg)
             samples=[Path(p) for p, in self.index.execute("SELECT path FROM files WHERE name LIKE '%.dat' ORDER BY scoped DESC,name LIMIT 40")]
             for source in candidates:
@@ -438,9 +454,11 @@ class ResourceStore:
                         resources.append(resource);break
                 except (OSError,ValueError):
                     if fallback is None:fallback=(source,'corrupt')
-        network_diagnostics=self._network(msg,resources)
+        if not skip and skip_all and any(h.get('role') in ('thumbnail','source_icon') for h in (msg.get('_media') or {}).get('urls',[])):
+            self._skip(msg,'卡片图片')
+        network_diagnostics=[] if skip or skip_all else self._network(msg,resources)
         main=any(r['status']=='available' and r['role']=='main' for r in resources)
-        if kind in ('image','emoji','video','voice','file') and not main:
+        if kind in ('image','emoji','video','voice','file') and not main and not skip:
             status='missing'
             if fallback:
                 source,status=fallback
@@ -464,8 +482,8 @@ class ResourceStore:
         if kind=='quote' and depth<6:msg['quote']=self._quote(msg,depth)
         if kind=='chatrecord' and depth<6:
             record=dict(msg.get('forward') or build_forward(self.data,msg))
-            self._index_forward_media()
-            children=record.get('messages',[])
+            if not skip_all:self._index_forward_media()
+            children=[child for child in record.get('messages',[]) if self.preferences['include_system_messages'] or not is_system_message(child)]
             available=max(0,self.forward_remaining)
             if len(children)>available:
                 children=children[:available];record.update(truncated=True,notice='转发与引用的展开消息数达到处理上限，已保留可读取内容。')

@@ -9,6 +9,7 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 from core.version import VERSION  # noqa: E402
 
+PORTABLE_EXCLUDED={'使用说明.md','修复说明.md'}
 
 def main():
     output=Path(sys.argv[1]).resolve() if len(sys.argv)>1 else ROOT/'release'
@@ -20,9 +21,9 @@ def main():
     portable=output/f'Moect-{VERSION}-Windows-x64.zip'
     with ZipFile(portable,'w',ZIP_DEFLATED,compresslevel=6) as archive:
         for path in sorted(runtime.rglob('*')):
-            if path.is_file():archive.write(path,'Moect/'+path.relative_to(runtime).as_posix())
-        for source,target in [('docs/usage.md','使用说明.md'),('修复说明.md','修复说明.md'),
-                              ('LICENSE','LICENSE'),('THIRD_PARTY_NOTICES.md','THIRD_PARTY_NOTICES.md')]:
+            if path.is_file() and path.name not in PORTABLE_EXCLUDED:
+                archive.write(path,'Moect/'+path.relative_to(runtime).as_posix())
+        for source,target in [('LICENSE','LICENSE'),('THIRD_PARTY_NOTICES.md','THIRD_PARTY_NOTICES.md')]:
             archive.write(ROOT/source,'Moect/'+target)
     source=output/f'Moect-{VERSION}-Source.zip'
     files=subprocess.check_output(['git','ls-files','-z'],cwd=ROOT).decode('utf-8').split('\0')

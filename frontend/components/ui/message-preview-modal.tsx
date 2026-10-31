@@ -73,12 +73,12 @@ function ForwardPreview({record,depth=0}:{record:any,depth?:number}) {
   const [expanded,setExpanded]=useState(false)
   const [visible,setVisible]=useState(50)
   const rows=Array.isArray(record?.messages)?record.messages:[]
-  return <details className="mt-2 rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-black/[0.02] dark:bg-white/[0.03] p-3" onToggle={e=>setExpanded(e.currentTarget.open)}>
+  return <details className="mt-2 min-w-0 max-w-full [overflow-wrap:anywhere] rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-black/[0.02] dark:bg-white/[0.03] p-3" onToggle={e=>setExpanded(e.currentTarget.open)}>
     <summary className="cursor-pointer text-sm font-medium text-foreground select-none">{record.title||'转发的聊天记录'}<span className="ml-2 text-xs font-normal text-muted-foreground">{record.total??rows.length} 条 · 点击展开</span></summary>
     {expanded&&<div className="mt-3 space-y-3 max-h-[55vh] overflow-auto">
       {rows.slice(0,visible).map((message:any,index:number)=><div key={index} className="border-t border-black/[0.04] dark:border-white/[0.06] pt-2">
         <div className="text-xs text-muted-foreground"><span className="font-medium text-foreground/80">{message.sender||'转发消息'}</span><span className="ml-2">{message.time_str}</span></div>
-        {message.forward&&depth<6?<ForwardPreview record={message.forward} depth={depth+1}/>:<div className="mt-1 text-sm whitespace-pre-wrap break-words text-foreground/80">{message.text}</div>}
+        {message.forward&&depth<6?<ForwardPreview record={message.forward} depth={depth+1}/>:<div className="mt-1 text-sm whitespace-pre-wrap [overflow-wrap:anywhere] text-foreground/80">{message.text}</div>}
         {(message.quote||message.extra?.reply)&&<div className="mt-1 pl-2 border-l-2 border-primary/30 text-xs text-muted-foreground">{(message.quote||message.extra.reply).sender}：{(message.quote||message.extra.reply).text}</div>}
       </div>)}
       {visible<rows.length&&<Button size="sm" variant="ghost" onClick={()=>setVisible(n=>n+50)}>再显示 50 条</Button>}
@@ -213,9 +213,9 @@ export function MessagePreviewModal({ open, onClose, chat, onExport }: MessagePr
           parts.forEach((part, pi) => {
             if (urlRegex.test(part) || part.match(/^https?:\/\//)) {
               textNodes.push(
-                <a key={`link-${i}-${pi}`} href={part} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-foreground decoration-dashed underline underline-offset-2 hover:text-blue-600 transition-colors">
+                <a key={`link-${i}-${pi}`} href={part} target="_blank" rel="noopener noreferrer" className="inline [overflow-wrap:anywhere] text-foreground decoration-dashed underline underline-offset-2 hover:text-blue-600 transition-colors">
                   <span>{part}</span>
-                  <ExternalLink className="w-3 h-3 shrink-0 opacity-50" />
+                  <ExternalLink className="inline-block w-3 h-3 ml-0.5 align-text-bottom opacity-50" />
                 </a>
               )
             } else if (part) {
@@ -564,7 +564,7 @@ export function MessagePreviewModal({ open, onClose, chat, onExport }: MessagePr
                             {format(new Date(msg.msgTime * 1000), 'MM-dd HH:mm')}
                           </span>
                         </div>
-                        {msg.richContent?.forward?<ForwardPreview record={msg.richContent.forward}/>:<p className="text-sm text-foreground/80 break-words leading-relaxed">
+                        {msg.richContent?.forward?<ForwardPreview record={msg.richContent.forward}/>:<p className="text-sm text-foreground/80 [overflow-wrap:anywhere] leading-relaxed">
                           {formatMessageElements(msg.elements)}
                           {msg.richContent?.title&&<span className="block mt-1 font-medium">{msg.richContent.title}</span>}
                           {msg.richContent?.reply&&<span className="block mt-2 pl-3 border-l-2 border-primary/30 text-xs text-muted-foreground">{msg.richContent.reply.sender}：{msg.richContent.reply.text}</span>}

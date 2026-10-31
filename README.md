@@ -6,7 +6,7 @@
 
 紫色主题、鸿蒙字体，以及熟悉的会话与任务布局。一次选择一个会话，或把多个会话一起保存下来。
 
-**[下载一键安装包](https://github.com/mofan6/Moect/releases/latest/download/Moect-1.1.0-Setup-x64.exe)** · **[使用指南](docs/usage.md)** · **[更新记录](CHANGELOG.md)** · **[反馈问题](https://github.com/mofan6/Moect/issues)**
+**[下载一键安装包](https://github.com/mofan6/Moect/releases/latest)** · **[使用指南](docs/usage.md)** · **[更新记录](CHANGELOG.md)** · **[反馈问题](https://github.com/mofan6/Moect/issues)**
 
 [![最新版本](https://img.shields.io/github/v/release/mofan6/Moect?color=8771cf&labelColor=282333&style=flat-square)](https://github.com/mofan6/Moect/releases/latest)
 [![下载量](https://img.shields.io/github/downloads/mofan6/Moect/total?color=8771cf&labelColor=282333&style=flat-square)](https://github.com/mofan6/Moect/releases)
@@ -32,12 +32,14 @@
 
 媒体能否保存取决于本地缓存、可用凭据及原始文件。没有取得的附件会显示具体状态；链接、小程序与转账卡片保留可用信息，不保证还原远端已失效的内容。卡片样式更新需要重新导出。
 
+导出时可单独跳过图片/动画表情、视频、语音和文件内容，也可使用快速导出跳过所有资源及头像。消息和已有元数据仍会保留；这些设置同样作用于引用回复和合并转发。系统消息与头像可独立选择。
+
 ## 快速开始
 
 1. 下载 [Moect 一键安装包](https://github.com/mofan6/Moect/releases/latest)，双击后选择安装位置及是否创建桌面快捷方式，再点击“安装”。开始菜单入口会自动创建；缺少 WebView2 时会自动准备运行环境，此时需要联网。
 2. 打开并登录电脑微信，然后启动 Moect，点击“连接微信”。也可以打开已有解密备份，或先体验虚构的演示数据。
 3. 点击会话查看记录，选择导出格式与时间范围，创建任务。
-4. 导出完成后，在任务页面直接打开文件。HTML 打开即进入对话，批量导出可在顶部切换会话。
+4. 导出完成后，在任务页面直接打开文件。HTML 打开即进入对话，批量导出可在顶部切换会话，顶栏可收起或展开。短消息气泡随内容收紧，长链接自动换行。
 
 完整保留导出文件夹里的 HTML、消息分片和资源目录，才能在离线电脑上继续查看媒体。
 

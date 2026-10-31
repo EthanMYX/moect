@@ -12,6 +12,7 @@ from urllib.parse import quote
 from .streaming import BufferedTextWriter
 from .resources import ResourceStore
 from .version import VERSION,APP_NAME
+from .export_options import export_preferences,is_system_message
 
 FORMATS = {'html', 'json', 'jsonl', 'txt', 'csv', 'md'}
 
@@ -122,11 +123,13 @@ def export_session(archive, session, options, folder, viewer_assets, progress, c
     first_time = last_time = None
     out = folder / stem if fmt=='html' else folder / (stem+'_assets')
     out.mkdir(exist_ok=True)
-    resources=ResourceStore(archive.data,session['username'],out,cancel,status) if hasattr(archive,'data') else None
+    preferences=export_preferences(options)
+    resources=ResourceStore(archive.data,session['username'],out,cancel,status,preferences) if hasattr(archive,'data') else None
     def records():
         nonlocal first_time,last_time
         try:
             for msg in archive.messages(session['username'],options,cancel=cancel):
+                if not preferences['include_system_messages'] and is_system_message(msg):continue
                 first_time=msg['create_time'] if first_time is None else first_time
                 last_time=msg['create_time']
                 yield resources.enrich(msg) if resources else msg
@@ -135,6 +138,7 @@ def export_session(archive, session, options, folder, viewer_assets, progress, c
     meta = dict(application=APP_NAME, version=VERSION, session=session['username'],
                 name=title, exported_at=datetime.now().isoformat(timespec='seconds'),
                 time_zone='Asia/Shanghai',
+                export_options=preferences,
                 demo=bool(options.get('demo')), filters={k: options[k] for k in ('query','kind','start','end') if k in options})
     # Like QCE's text exporter, source iteration is separate from rendering; each
     # record is released immediately after writing. HTML rotates bounded chunks.
@@ -215,7 +219,8 @@ def export_index(folder, records, demo=False):
                      'onchange="location.href=this.value">'+choices+'</select></label></nav>')
                 path=Path(record['path'])
                 content=path.read_text(encoding='utf-8')
-                path.write_text(content.replace('<header>','<header>'+nav,1),encoding='utf-8')
+                anchor='<div id="header-content">' if '<div id="header-content">' in content else '<header>'
+                path.write_text(content.replace(anchor,anchor+nav,1),encoding='utf-8')
         target=quote(paths[0],safe='/')
         # Replace before paint, with a no-JS refresh and blocked-navigation link.
         content=('<!doctype html><html lang="zh-CN"><meta charset="utf-8">'

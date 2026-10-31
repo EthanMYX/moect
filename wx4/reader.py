@@ -54,6 +54,17 @@ APPMSG_SUBTYPE = {
 KNOWN_BASE_TYPES = set(TYPE_NAMES) | set(range(1, 100)) | {10000, 10002}
 
 
+def sqlite_text(value: bytes) -> str | bytes:
+    """Some WeChat TEXT columns contain binary digests/compressed payloads.
+
+    Keep those bytes intact; decoding with 'ignore' here would corrupt media
+    identities. Real UTF-8 text still reaches all callers as normal strings.
+    """
+    if b'\x00' in value:return value
+    try:return value.decode('utf-8')
+    except UnicodeDecodeError:return value
+
+
 def normalize_local_type(t) -> int:
     """4.x 的 local_type 可能是 (subtype << 32) | base_type 的复合值。"""
     try:
@@ -295,6 +306,7 @@ class Wx4Data:
             try:
                 con = sqlite3.connect("file:%s?mode=ro" % path.replace("\\", "/"),
                                       uri=True)
+                con.text_factory = sqlite_text
                 con.row_factory = sqlite3.Row
                 self._tables[id(con)] = {
                     r[0] for r in con.execute(
@@ -351,6 +363,11 @@ class Wx4Data:
                 continue
             for r in rows:
                 d = dict(r)
+                for field in ('username','user_name','remark','nick_name','alias',
+                              'big_head_url','small_head_url','description'):
+                    if field in d and isinstance(d[field],bytes):
+                        try:d[field]=d[field].decode('utf-8')
+                        except UnicodeDecodeError:d[field]=''
                 d["_table"] = table
                 if d.get("id") is not None:
                     self.contacts.setdefault("#id:%s" % d["id"], d)
@@ -567,7 +584,7 @@ class Wx4Data:
         elif mtype == 50:
             out["kind"] = "voip"
             out["text"] = "[音视频通话]"
-        elif mtype == 10000:
+        elif mtype in (10000,10002):
             out["kind"] = "system"
             out["text"] = self._system_text(content)
         elif mtype in (49,11001,11002) or (mtype!=1 and '<appmsg' in content):

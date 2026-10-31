@@ -16,6 +16,7 @@ from .exporting import FORMATS, export_index, export_session, clean
 from .avatars import AvatarStore, image_type, avatar_host
 from .version import VERSION,APP_NAME
 from .paths import app_data_root
+from .export_options import export_preferences
 from wx4.forward import build_forward
 
 
@@ -31,6 +32,7 @@ def atomic_json(path, data):
 
 def options_from(payload):
     result = {'query': str(payload.get('query', ''))[:200], 'kind': payload.get('kind', 'all')}
+    result.update(export_preferences(payload))
     if result['kind'] not in ('all','text','image','voice','video','file','link','system'):
         raise ValueError('消息类型不受支持')
     for key, tail in [('start', 'T00:00:00'), ('end', 'T23:59:59')]:

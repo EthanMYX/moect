@@ -15,7 +15,7 @@ python build.py
 .\installer\build.ps1 -OutputDirectory .\release
 ```
 
-程序产物为 `dist\Moect\Moect.exe` 及其完整 `_internal` 文件夹；安装产物为 `release\Moect-1.1.0-Setup-x64.exe`。版本统一取自 `core/version.py`，安装脚本读取已构建 EXE 的版本。
+程序产物为 `dist\Moect\Moect.exe` 及其完整 `_internal` 文件夹；安装产物为 `release\Moect-1.1.5-Setup-x64.exe`。版本统一取自 `core/version.py`，安装脚本读取已构建 EXE 的版本。
 
 `installer/build.ps1` 首次从 Microsoft 官方地址下载 WebView2 引导程序到忽略的 `build-support` 目录，并验证 Microsoft Authenticode 签名后才编译。安装器按当前用户安装，检测 HKCU / HKLM 的 WebView2 运行环境；仅在缺失时执行引导程序。程序未附带 Authenticode 代码签名证书。
 
@@ -34,4 +34,4 @@ python docs/tools/render_assets.py
 
 ## 本次发布检查
 
-进行了 Python AST 与 Ruff 静态检查、TypeScript / Vite 构建、PyInstaller 及 Inno Setup 编译。按本次工作范围未运行真实微信导出、安装过程测试或桌面界面回归测试。宣传图渲染仅用于文档制作。
+1.1.5 进行了 25 项合成数据库与资源测试、Python AST/Ruff 静态检查、TypeScript/Vite 构建、PyInstaller 及 Inno Setup 编译。没有读取反馈用户的真实聊天数据或运行桌面界面回归测试。软件界面由用户检查。
