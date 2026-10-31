@@ -49,9 +49,12 @@ def main():
     remote=api('GET',f'/repos/{owner}/{name}/commits/main')['sha']
     if sha!=remote:raise SystemExit('Push the matching source commit first.')
     api('PATCH',f'/repos/{owner}/{name}',{
-        'description':'Windows 微信 4.x 聊天记录导出与本地归档工具 · 紫色桌面界面、媒体资源、离线 HTML 与多格式导出',
+        'description':'Windows 微信 4.x 聊天记录导出、备份与离线归档工具 · WeChat chat history exporter & backup. 支持好友/群聊、头像、图片、GIF 表情、音视频、文件、链接、小程序、引用回复和合并转发；支持 HTML、JSON、JSONL、TXT、CSV、Markdown 导出、批量任务、消息搜索及时间筛选，提供一键安装包。',
         'homepage':f'https://github.com/{owner}/{name}/releases/latest','has_issues':True})
-    api('PUT',f'/repos/{owner}/{name}/topics',{'names':['wechat','chat-export','windows','desktop','python','react','offline','archive']})
+    api('PUT',f'/repos/{owner}/{name}/topics',{'names':[
+        'archive','chat-export','desktop','offline','python','react','wechat','windows',
+        'chat-archive','chat-backup','chat-history','data-export','html-export','media-export',
+        'wechat-backup','wechat-exporter','wechat-history','wechatmsg','wechat4','weixin']})
     tag='v'+VERSION
     try:release=api('GET',f'/repos/{owner}/{name}/releases/tags/{tag}')
     except HTTPError as exc:
