@@ -1,0 +1,178 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+[data-window-drag]{app-region:drag;-webkit-app-region:drag;user-select:none}
+
+:root {
+  --background: #f7f5fb;
+  --foreground: #1d1b20;
+  --card: #fffbff;
+  --card-foreground: #1d1b20;
+  --popover: #fffbff;
+  --popover-foreground: #1d1b20;
+  --primary: #7056c4;
+  --primary-foreground: #ffffff;
+  --secondary: #eee8f7;
+  --secondary-foreground: #4b3a76;
+  --muted: #f0ecf5;
+  --muted-foreground: #625b71;
+  --accent: #eae2f8;
+  --accent-foreground: #4b3aa2;
+  --destructive: oklch(0.577 0 0);
+  --destructive-foreground: oklch(0.577 0 0);
+  --border: #e6deef;
+  --input: #e6deef;
+  --ring: #8b76f5;
+  --chart-1: oklch(0.646 0 0);
+  --chart-2: oklch(0.6 0 0);
+  --chart-3: oklch(0.398 0 0);
+  --chart-4: oklch(0.828 0 0);
+  --chart-5: oklch(0.769 0 0);
+  --radius: 0.625rem;
+  --sidebar: #f1ecf8;
+  --sidebar-foreground: #3c3450;
+  --sidebar-primary: #7056c4;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e7ddf7;
+  --sidebar-accent-foreground: #4b3aa2;
+  --sidebar-border: #e3dbea;
+  --sidebar-ring: #8b76f5;
+}
+
+.dark {
+  --background: #141218;
+  --foreground: #e9e0ef;
+  --card: #1e1a25;
+  --card-foreground: #e9e0ef;
+  --popover: #282230;
+  --popover-foreground: #e9e0ef;
+  --primary: #cdbbff;
+  --primary-foreground: #382469;
+  --secondary: #352c46;
+  --secondary-foreground: #e4d8f7;
+  --muted: #2b2534;
+  --muted-foreground: #b7adc5;
+  --accent: #3c3052;
+  --accent-foreground: #e5d8ff;
+  --destructive: oklch(0.396 0 0);
+  --destructive-foreground: oklch(0.637 0 0);
+  --border: #3b3247;
+  --input: #3b3247;
+  --ring: #bda6ff;
+  --chart-1: oklch(0.488 0 0);
+  --chart-2: oklch(0.696 0 0);
+  --chart-3: oklch(0.769 0 0);
+  --chart-4: oklch(0.627 0 0);
+  --chart-5: oklch(0.645 0 0);
+  --sidebar: #141218;
+  --sidebar-foreground: #d4c8e4;
+  --sidebar-primary: #cdbbff;
+  --sidebar-primary-foreground: #382469;
+  --sidebar-accent: #392d4c;
+  --sidebar-accent-foreground: #e5d8ff;
+  --sidebar-border: #3b3247;
+  --sidebar-ring: #bda6ff;
+}
+
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Inter 延迟加载完成后（InterFontLoader 加 qce-inter class）才把它排进字体栈。 */
+html.qce-inter body {
+  --font-geist-sans: 'Inter Variable', GeistSans, 'GeistSans Fallback', sans-serif;
+}
+
+/* Scrollbar styling for Linear-like feel */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: oklch(0.8 0 0);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.7 0 0);
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: oklch(0.3 0 0);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.4 0 0);
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes dropdown-in {
+  from { opacity: 0; transform: translateY(-8px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes dropdown-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(-6px) scale(0.96); }
+}

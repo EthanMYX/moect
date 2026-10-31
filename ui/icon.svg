@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="04 / Violet Conversation">
+<defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#8B76F5"/><stop offset="1" stop-color="#4B3AA2"/></linearGradient><linearGradient id="front" x2="0" y2="1"><stop stop-color="#FFFFFF"/><stop offset="1" stop-color="#E9E5FF"/></linearGradient></defs>
+<rect x="16" y="16" width="480" height="480" rx="132" fill="url(#bg)"/>
+<path d="M151 109h191c37 0 67 30 67 67v47c0 37-30 67-67 67h-5l11 38-52-38H151c-37 0-67-30-67-67v-47c0-37 30-67 67-67z" fill="#BFB1FF"/>
+<path d="M157 204h179c37 0 67 30 67 67v40c0 37-30 67-67 67H213l-52 37 11-37h-15c-37 0-67-30-67-67v-40c0-37 30-67 67-67z" fill="url(#front)"/>
+<path d="M158 267h132M158 307h85" stroke="#6651C0" stroke-width="17" stroke-linecap="round"/>
+<circle cx="338" cy="303" r="38" fill="#34D7AF"/>
+<path d="M338 282v38m-15-14 15 15 15-15" fill="none" stroke="#193B45" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

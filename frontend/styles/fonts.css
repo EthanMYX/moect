@@ -1,0 +1,4 @@
+/* Explicit file source: independent of system aliases and fallback fonts. */
+@font-face{font-family:'WCE HarmonyOS Sans';src:url('../fonts/HarmonyOS_Sans_SC_Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:block}
+:root{--font-geist-sans:'WCE HarmonyOS Sans',sans-serif;--font-geist-mono:Consolas,monospace}
+html,body{margin:0;-webkit-font-smoothing:auto;text-rendering:optimizeLegibility;font-synthesis:weight style}
