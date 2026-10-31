@@ -25,7 +25,7 @@ SolidCompression=yes
 WizardStyle=modern
 WizardSizePercent=110
 DisableWelcomePage=yes
-DisableDirPage=yes
+DisableDirPage=no
 DisableProgramGroupPage=yes
 DisableReadyPage=no
 DisableStartupPrompt=yes
@@ -44,8 +44,11 @@ Name: "chinesesimp"; MessagesFile: "ChineseSimplified.isl"
 
 [Messages]
 ReadyLabel1=点击“安装”，即可在这台电脑上使用 Moect。
-ReadyLabel2a=将为当前用户安装软件，并创建桌面和开始菜单入口。已有的配置、聊天快照和导出记录会保留。
+ReadyLabel2a=将为当前用户安装软件，并创建开始菜单入口。桌面快捷方式按您的选择创建。已有的配置、聊天快照和导出记录会保留。
 FinishedLabel=Moect 已安装完成。
+
+[Tasks]
+Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "快捷方式："
 
 [Files]
 Source: "..\dist\Moect\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -54,7 +57,7 @@ Source: "..\修复说明.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\build-support\MicrosoftEdgeWebview2Setup.exe"; Flags: dontcopy
 
 [Icons]
-Name: "{userdesktop}\Moect"; Filename: "{app}\Moect.exe"; WorkingDir: "{app}"
+Name: "{userdesktop}\Moect"; Filename: "{app}\Moect.exe"; WorkingDir: "{app}"; Tasks: desktopicon
 Name: "{userprograms}\Moect"; Filename: "{app}\Moect.exe"; WorkingDir: "{app}"
 
 [Run]

@@ -2,7 +2,7 @@
 
 ## 安装与升级
 
-从 [Releases](https://github.com/mofan6/Moect/releases/latest) 下载 `Moect-1.1.0-Setup-x64.exe`，双击后点击“安装”。软件默认安装在当前用户的 `%LOCALAPPDATA%\Programs\Moect`，无需预装 Python 或 Node.js。缺少 WebView2 时，安装器通过 Microsoft 官方引导程序自动安装，需要网络连接。
+从 [Releases](https://github.com/mofan6/Moect/releases/latest) 下载 `Moect-1.1.0-Setup-x64.exe`，双击后选择安装位置，并勾选是否创建桌面快捷方式，再点击“安装”。软件默认安装在当前用户的 `%LOCALAPPDATA%\Programs\Moect`，可自行更改，无需预装 Python 或 Node.js。缺少 WebView2 时，安装器通过 Microsoft 官方引导程序自动安装，需要网络连接。
 
 升级前请等待导出任务完成并关闭 Moect。覆盖安装保留用户配置、聊天快照、媒体缓存及历史任务。卸载只移除软件，不删除这些数据或聊天导出。
 
