@@ -60,6 +60,8 @@ def main():
         reference=api('GET',f'/repos/{owner}/{name}/git/ref/tags/{tag}')['object']
     except HTTPError as exc:
         if exc.code!=404:raise
+        reference=api('POST',f'/repos/{owner}/{name}/git/refs',{'ref':'refs/tags/'+tag,'sha':sha})['object']
+        if reference['sha']!=sha:raise SystemExit('Version tag creation did not match the source commit.')
     else:
         for _ in range(4):
             if reference['type']=='commit':break
@@ -76,7 +78,8 @@ def main():
     if any(a['name'] not in {p.name for p in paths} for a in release.get('assets',[])):
         raise SystemExit('Draft has unrelated assets; refusing to publish them.')
     api('PATCH',f'/repos/{owner}/{name}/releases/{release["id"]}',{
-        'name':'Moect '+VERSION,'body':(ROOT/f'docs/release-{VERSION}.md').read_text(encoding='utf-8')})
+        'tag_name':tag,'target_commitish':sha,'name':'Moect '+VERSION,
+        'body':(ROOT/f'docs/release-{VERSION}.md').read_text(encoding='utf-8')})
     print('Draft release ready',flush=True)
     assets={a['name']:a for a in release.get('assets',[])}
     for path in paths:
@@ -91,7 +94,9 @@ def main():
         if asset['size']!=path.stat().st_size or asset.get('digest')!=digest:
             raise SystemExit('Uploaded asset verification failed: '+path.name)
         print('Uploaded and verified:',path.name,flush=True)
-    public=api('PATCH',f'/repos/{owner}/{name}/releases/{release["id"]}',{'draft':False,'make_latest':'true'})
+    public=api('PATCH',f'/repos/{owner}/{name}/releases/{release["id"]}',{
+        'tag_name':tag,'target_commitish':sha,'draft':False,'make_latest':'true'})
+    if public['draft'] or public['tag_name']!=tag:raise SystemExit('Published release version tag does not match.')
     print(json.dumps({'release':public['html_url'],'draft':public['draft'],'assets':len(paths)}),flush=True)
 
 
