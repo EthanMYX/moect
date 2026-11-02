@@ -44,6 +44,7 @@ interface Message {
   senderUin: string
   senderAvatar?: string
   richContent?: any
+  isSystem?: boolean
   elements: any[]
   peerUin: string
   chatType: number
@@ -76,7 +77,7 @@ function ForwardPreview({record,depth=0}:{record:any,depth?:number}) {
   return <details className="mt-2 min-w-0 max-w-full [overflow-wrap:anywhere] rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-black/[0.02] dark:bg-white/[0.03] p-3" onToggle={e=>setExpanded(e.currentTarget.open)}>
     <summary className="cursor-pointer text-sm font-medium text-foreground select-none">{record.title||'转发的聊天记录'}<span className="ml-2 text-xs font-normal text-muted-foreground">{record.total??rows.length} 条 · 点击展开</span></summary>
     {expanded&&<div className="mt-3 space-y-3 max-h-[55vh] overflow-auto">
-      {rows.slice(0,visible).map((message:any,index:number)=><div key={index} className="border-t border-black/[0.04] dark:border-white/[0.06] pt-2">
+      {rows.slice(0,visible).map((message:any,index:number)=>message.kind==='system'||[10000,10002].includes(Number(message.type))?<div key={index} title={message.time_str} className="px-4 py-2 text-center text-xs text-muted-foreground/70 whitespace-pre-wrap [overflow-wrap:anywhere]">{message.text}</div>:<div key={index} className="border-t border-black/[0.04] dark:border-white/[0.06] pt-2">
         <div className="text-xs text-muted-foreground"><span className="font-medium text-foreground/80">{message.sender||'转发消息'}</span><span className="ml-2">{message.time_str}</span></div>
         {message.forward&&depth<6?<ForwardPreview record={message.forward} depth={depth+1}/>:<div className="mt-1 text-sm whitespace-pre-wrap [overflow-wrap:anywhere] text-foreground/80">{message.text}</div>}
         {(message.quote||message.extra?.reply)&&<div className="mt-1 pl-2 border-l-2 border-primary/30 text-xs text-muted-foreground">{(message.quote||message.extra.reply).sender}：{(message.quote||message.extra.reply).text}</div>}
@@ -540,6 +541,7 @@ export function MessagePreviewModal({ open, onClose, chat, onExport }: MessagePr
             {!loading && !error && messages.length > 0 && (
               <div className="space-y-1">
                 {messages.map((msg, idx) => {
+                  if(msg.isSystem)return <div key={`${msg.msgId}-${idx}`} title={format(new Date(msg.msgTime*1000),'yyyy-MM-dd HH:mm:ss')} className="px-6 py-2 text-center text-xs text-muted-foreground/70 whitespace-pre-wrap [overflow-wrap:anywhere]">{formatMessageElements(msg.elements)}</div>
                   const isFromSelf = msg.sendType === 1
                   return (
                     <div

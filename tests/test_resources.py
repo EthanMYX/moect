@@ -108,7 +108,7 @@ class ResourceTests(unittest.TestCase):
         padded=PNG+bytes([16-len(PNG)%16])*(16-len(PNG)%16)
         p.write_bytes(SIG_V2+struct.pack('<LL',len(PNG),0)+b'\x00'+AES.new(b'0123456789abcdef',AES.MODE_ECB).encrypt(padded))
         out=self.root/'encrypted';out.mkdir()
-        with patch('wx4.media.find_dat_aes_key',return_value=None):
+        with patch('core.media_codec.find_dat_aes_key',return_value=None):
             result=export_session(self.archive,self.archive.sessions()[0],{'format':'json'},out,ASSETS,lambda n:None,lambda:None)
         rows=json.loads(Path(result['path']).read_text(encoding='utf-8'))['messages']
         msg=next(m for m in rows if str(m['server_id'])=='10')

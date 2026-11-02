@@ -1,0 +1,7 @@
+{
+  "endpoint": "https://updates.motanseat.asia/channel/stable.json",
+  "public_key": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAtvBWvEcExaMU9feI9z+3sjXabnCpmiaXCGgZ+EZaQh4=\n-----END PUBLIC KEY-----",
+  "hosts": [
+    "updates.motanseat.asia"
+  ]
+}

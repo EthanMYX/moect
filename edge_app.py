@@ -7,8 +7,9 @@ import sys
 from pathlib import Path
 import webview
 from core.service import Service
-from core.version import PROJECT_URL
+from core.version import SOURCE_URLS
 from core.edge_chrome import NativeFrame
+from core.window_state import DEFAULT_SIZE,MIN_SIZE,WindowPlacement
 
 BASE=Path(getattr(sys,'_MEIPASS',Path(__file__).parent))
 UI=BASE/'ui-qce'
@@ -17,6 +18,14 @@ UI=BASE/'ui-qce'
 class Api:
     def __init__(self,service):self._service=service;self._window=None;self._frame=None
 
+    def _paint_frame(self):
+        from System import Action
+        from System.Drawing import ColorTranslator
+        color=self._service.appearance()['background']
+        def paint():
+            self._window.native.BackColor=ColorTranslator.FromHtml(color)
+        self._window.native.Invoke(Action(paint))
+
     def invoke(self,action,payload=None):
         try:
             if not isinstance(action,str) or not isinstance(payload or {},dict):raise ValueError('请求无效')
@@ -24,7 +33,16 @@ class Api:
             if len(json.dumps(payload))>100000:raise ValueError('请求过大')
             svc=self._service;window=self._window
             if action.startswith('window_'):
-                if action=='window_drag':
+                if action=='window_overlay':
+                    if not isinstance(payload.get('active'),bool):raise ValueError('窗口遮罩状态无效')
+                    # Compatibility only. The WebView now covers the full client
+                    # area, so its overlay paints in one pass without native dimming.
+                elif action=='window_resize':
+                    edge=payload.get('edge')
+                    if edge not in ('n','s','e','w','nw','ne','sw','se'):raise ValueError('窗口边缘无效')
+                    from System import Action
+                    window.native.Invoke(Action(lambda:self._frame.resize(edge)))
+                elif action=='window_drag':
                     from System import Action
                     # ReleaseCapture must run on the HWND's owning UI thread.
                     window.native.Invoke(Action(self._frame.drag))
@@ -48,17 +66,19 @@ class Api:
                     target=Path(svc.config['export_dir']);target.mkdir(parents=True,exist_ok=True)
                 os.startfile(str(target));result={'ok':True}
             elif action=='source':
-                urls={'wechat':'https://github.com/LC044/WeChatMsg','wx4':'https://github.com/chenanhan230-del/WeChatMsg-4x','project':PROJECT_URL,'qce':PROJECT_URL}
-                url=urls.get(payload.get('name'))
+                url=SOURCE_URLS.get(payload.get('name'))
                 if url:os.startfile(url)
                 result={'ok':True}
+            elif action=='online_open_link':
+                from core.online_protocol import web_url
+                os.startfile(web_url(payload.get('url')));result={'ok':True}
+            elif action=='update_apply':
+                result=svc.online.prepare_apply()
+                window.destroy()
             else:
                 result=svc.call(action,payload)
                 if action=='settings':
-                    from System import Action
-                    from System.Drawing import ColorTranslator
-                    color='#141218' if svc.config['theme']=='dark' else '#f7f5fb'
-                    window.native.Invoke(Action(lambda:setattr(window.native,'BackColor',ColorTranslator.FromHtml(color))))
+                    self._paint_frame()
             return {'result':result}
         except Exception as exc:return {'error':str(exc)[:240] or '操作失败'}
 
@@ -68,13 +88,14 @@ class Api:
         from System.Windows.Forms import Padding
         def install():
             form=self._window.native
-            form.BackColor=ColorTranslator.FromHtml('#141218' if self._service.config['theme']=='dark' else '#f7f5fb')
+            form.BackColor=ColorTranslator.FromHtml(self._service.appearance()['background'])
             self._frame=NativeFrame(form.Handle.ToInt64())
-            # The WebView2 child HWND used to cover the entire client area and
-            # consume the border hits. Leave a native, DPI-scaled resize gutter.
+            self._frame.hideBorder()
+            self._placement=WindowPlacement(form,self._service,self._frame)
+            # Fill every client pixel. User-driven edge input is forwarded to
+            # Windows' native sizing loop, preserving snap, DPI and min sizes.
+            form.Padding=Padding(0)
             def resize(*_):
-                size=0 if self._frame.isMaximized() else max(5,round(6*self._frame.devicePixelRatioF()))
-                if form.Padding.Left!=size:form.Padding=Padding(size)
                 if not form.webview.IsDisposed and form.webview.CoreWebView2 is not None:
                     state=json.dumps({'maximized':self._frame.isMaximized()})
                     form.webview.CoreWebView2.ExecuteScriptAsync('window.dispatchEvent(new CustomEvent("wce-window-state",{detail:'+state+'}));')
@@ -113,8 +134,8 @@ def main():
     if args.demo:service.demo()
     api=Api(service)
     window=webview.create_window('Moect · 聊天记录归档',(UI/'index.html').as_uri(),
-        js_api=api,width=1360,height=900,min_size=(1080,720),frameless=True,
-        easy_drag=False,shadow=True,background_color='#f7f5fb')
+        js_api=api,width=DEFAULT_SIZE[0],height=DEFAULT_SIZE[1],min_size=MIN_SIZE,frameless=True,
+        easy_drag=False,shadow=True,background_color=service.appearance()['background'])
     api._window=window
     window.events.before_show+=api._install_frame
     def closing():

@@ -48,6 +48,8 @@ export interface SessionItem {
 }
 
 export interface UseSessionFilterOptions {
+  sortPreference?: {field:SortField;order:SortOrder}
+  onSortPreferenceChange?: (value:{field:SortField;order:SortOrder})=>void
   defaultPageSize?: number
   /**
    * Issue #344: peerUid → 最近一条消息 ISO 时间。key 针对
@@ -99,13 +101,15 @@ export function useSessionFilter(
     defaultPageSize = 50,
     recentActivityMap,
     taskStatsMap,
+    sortPreference,
+    onSortPreferenceChange,
   } = options
 
   // Filter state
   const [search, setSearch] = useState("")
   const [type, setType] = useState<SessionType>('all')
-  const [sortField, setSortField] = useState<SortField>('frequentExport')
-  const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
+  const [sortField, setSortField] = useState<SortField>(sortPreference?.field||'lastActivity')
+  const [sortOrder, setSortOrder] = useState<SortOrder>(sortPreference?.order||'desc')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(defaultPageSize)
 
@@ -223,13 +227,15 @@ export function useSessionFilter(
 
   const handleSetSortField = useCallback((value: SortField) => {
     setSortField(value)
+    onSortPreferenceChange?.({field:value,order:sortOrder})
     setPage(1)
-  }, [])
+  }, [onSortPreferenceChange,sortOrder])
 
   const handleSetSortOrder = useCallback((value: SortOrder) => {
     setSortOrder(value)
+    onSortPreferenceChange?.({field:sortField,order:value})
     setPage(1)
-  }, [])
+  }, [onSortPreferenceChange,sortField])
 
   const handleSetPageSize = useCallback((value: number) => {
     setPageSize(value)
@@ -239,11 +245,12 @@ export function useSessionFilter(
   const resetFilters = useCallback(() => {
     setSearch("")
     setType('all')
-    setSortField('frequentExport')
+    setSortField('lastActivity')
     setSortOrder('desc')
+    onSortPreferenceChange?.({field:'lastActivity',order:'desc'})
     setPage(1)
     setPageSize(defaultPageSize)
-  }, [defaultPageSize])
+  }, [defaultPageSize,onSortPreferenceChange])
 
   return {
     // State

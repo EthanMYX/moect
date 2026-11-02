@@ -23,3 +23,9 @@ exports/
 docs/.render/
 docs/images/raw/
 docs/.capture-state/
+
+# Publisher credentials stay outside the project.
+signing-key.pem
+*private*.pem
+publisher-state/
+/ui-publisher/

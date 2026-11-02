@@ -1,6 +1,7 @@
 """Contact avatar lookup shared by the UI and portable exports."""
 import base64
 import hashlib
+import base64
 import urllib.request
 from pathlib import Path
 from urllib.parse import urlparse

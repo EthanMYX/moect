@@ -13,6 +13,7 @@ from .streaming import BufferedTextWriter
 from .resources import ResourceStore
 from .version import VERSION,APP_NAME
 from .export_options import export_preferences,is_system_message
+from .themes import theme_archive,archive_theme
 
 FORMATS = {'html', 'json', 'jsonl', 'txt', 'csv', 'md'}
 
@@ -22,6 +23,19 @@ def safe_name(value):
     if text.split('.')[0].upper() in {'CON','PRN','AUX','NUL', *['COM'+str(i) for i in range(1,10)], *['LPT'+str(i) for i in range(1,10)]}:
         text = '_' + text
     return text
+
+
+def export_folder_name(name,uid,now=None):
+    """Readable identity first, then a human-readable timestamp; never a bare UUID."""
+    stamp=(now or datetime.now()).strftime('%Y-%m-%d_%H-%M-%S')
+    return safe_name(str(name))[:36]+'_'+safe_name(str(uid))[:42]+'_'+stamp
+
+
+def unused_folder(parent,name):
+    candidate=parent/name;number=2
+    while candidate.exists():
+        candidate=parent/(name+'_'+str(number));number+=1
+    return candidate
 
 
 def clean(msg):
@@ -136,6 +150,7 @@ def export_session(archive, session, options, folder, viewer_assets, progress, c
         finally:
             if resources:resources.close()
     meta = dict(application=APP_NAME, version=VERSION, session=session['username'],
+                theme=archive_theme(options.get('_theme')),
                 name=title, exported_at=datetime.now().isoformat(timespec='seconds'),
                 time_zone='Asia/Shanghai',
                 export_options=preferences,
@@ -143,7 +158,7 @@ def export_session(archive, session, options, folder, viewer_assets, progress, c
     # Like QCE's text exporter, source iteration is separate from rendering; each
     # record is released immediately after writing. HTML rotates bounded chunks.
     if fmt == 'html':
-        template = (viewer_assets / 'viewer.html').read_text(encoding='utf-8')
+        template = theme_archive((viewer_assets / 'viewer.html').read_text(encoding='utf-8'),meta['theme']).replace('__DATE_RANGE_PICKER__',(viewer_assets/'date-range-picker.js').read_text(encoding='utf-8'))
         chunks, batch = [], []
         batch_bytes = 0
         def flush():
@@ -167,7 +182,7 @@ def export_session(archive, session, options, folder, viewer_assets, progress, c
         manifest = dict(**meta, count=count, chunks=chunks,
                         resource_summary=resources.stats if resources else {})
         config = json.dumps(manifest, ensure_ascii=False).replace('<', '\\u003c')
-        (out / 'index.html').write_text(template.replace('__MANIFEST__', config), encoding='utf-8')
+        (out / 'index.html').write_text(template.replace('__DATE_RANGE_PICKER__',(viewer_assets/'date-range-picker.js').read_text(encoding='utf-8')).replace('__MANIFEST__', config), encoding='utf-8')
         path = out / 'index.html'
     else:
         path = folder / (stem + '.' + fmt)
@@ -202,7 +217,7 @@ def export_session(archive, session, options, folder, viewer_assets, progress, c
                 resource_summary=resources.stats if resources else {})
 
 
-def export_index(folder, records, demo=False):
+def export_index(folder, records, demo=False,theme=None):
     # Open HTML archives in the viewer; batch navigation stays inside it.
     if records and all(r['format']=='html' for r in records):
         paths=[Path(r['path']).relative_to(folder).as_posix() for r in records]
@@ -212,9 +227,9 @@ def export_index(folder, records, demo=False):
                     html.escape(quote(relpath(target,Path(current).parent.as_posix()),safe='/'),quote=True),
                     ' selected' if target==current else '',html.escape(item['name']))
                     for item,target in zip(records,paths))
-                nav=('<nav aria-label="归档会话" style="margin-bottom:14px;font-size:12px;color:#7e718f">'
+                nav=('<nav aria-label="归档会话" style="margin-bottom:14px;font-size:12px;color:var(--muted-foreground)">'
                      '<label>切换会话 <select aria-label="切换会话" '
-                     'style="font:inherit;color:#292137;background:white;border:1px solid #e3daef;'
+                     'style="font:inherit;color:var(--foreground);background:var(--card);border:1px solid var(--border);'
                      'border-radius:8px;padding:7px 10px;max-width:100%" '
                      'onchange="location.href=this.value">'+choices+'</select></label></nav>')
                 path=Path(record['path'])
@@ -228,7 +243,8 @@ def export_index(folder, records, demo=False):
                  '<meta http-equiv="refresh" content="0;url='+html.escape(target,quote=True)+'">'
                  '<script>location.replace('+json.dumps(target).replace('<','\\u003c')+');</script>'
                  '<a href="'+html.escape(target,quote=True)+'">打开聊天记录</a></html>')
-        (folder/'index.html').write_text(content,encoding='utf-8')
+        content=content.replace('<title>','<style>body{background:#f7f5fb;color:#292137}a{color:#7056c4}</style><title>',1)
+        (folder/'index.html').write_text(theme_archive(content,theme),encoding='utf-8')
         return
     links = ''.join('<li><a href="%s">%s</a><span>%s 条 · %s</span></li>' %
                     (html.escape(quote(Path(r['path']).relative_to(folder).as_posix(),safe='/'), quote=True),

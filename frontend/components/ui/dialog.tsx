@@ -16,6 +16,7 @@ const DialogOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Overlay
     ref={ref}
+    data-moect-window-overlay=""
     className={cn(
       "fixed inset-0 z-[100]",
       "bg-black/25 dark:bg-black/50",

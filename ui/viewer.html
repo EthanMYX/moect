@@ -5,14 +5,17 @@
 
 /* The sender/timestamp line must not impose its width on a short bubble. */
 .bubble{width:fit-content;max-width:100%}.me .bubble{margin-left:auto}.by{overflow-wrap:anywhere}
-header{padding:0 max(24px,calc((100% - 850px)/2))}#header-panel{display:grid;grid-template-rows:1fr;opacity:1;transition:grid-template-rows .22s ease,opacity .18s ease}.header-clip{min-height:0;overflow:hidden}#header-content{padding-top:20px;overflow-wrap:anywhere}.header-toggle-row{height:28px}#toggle-header{position:absolute;right:16px;bottom:2px;display:grid;place-items:center;width:32px;height:24px;padding:0;border-color:transparent;background:transparent;color:#7e718f;border-radius:6px}#toggle-header:hover{background:#f0eafa;color:#7056c4}#toggle-header:focus-visible{outline:2px solid #a48bd9;outline-offset:1px}#toggle-header svg{width:17px;height:17px;transition:transform .22s ease}header.is-collapsed #header-panel{grid-template-rows:0fr;opacity:0}header.is-collapsed #toggle-header svg{transform:rotate(180deg)}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+header{padding:0 max(24px,calc((100% - 850px)/2))}#header-panel{display:grid;grid-template-rows:1fr;opacity:1;transition:grid-template-rows .22s ease,opacity .18s ease}.header-clip{min-height:0;overflow:hidden}#header-content{padding-top:20px;overflow-wrap:anywhere}.header-toggle-row{height:28px;display:flex;justify-content:flex-end;align-items:center}#toggle-header{display:grid;place-items:center;width:32px;height:24px;padding:0;border-color:transparent;background:transparent;color:#7e718f;border-radius:6px}#toggle-header:hover{background:#f0eafa;color:#7056c4}#toggle-header:focus-visible{outline:2px solid #a48bd9;outline-offset:1px}#toggle-header svg{width:17px;height:17px;transition:transform .22s ease}header.is-collapsed #header-panel{grid-template-rows:0fr;opacity:0}header.is-collapsed #toggle-header svg{transform:rotate(180deg)}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 @media(max-width:600px){header{padding:0 16px}#header-content{padding-top:16px}}
 @media(prefers-reduced-motion:reduce){#header-panel,#toggle-header svg{transition:none}}
+.row.system{justify-content:center;margin:14px 0;padding:0 12px}.system-text{font-size:12px;line-height:1.6;text-align:center;color:#978aab;white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%}
+#archive-pagination{position:fixed;left:0;right:0;bottom:0;z-index:2;padding:10px 14px 12px;background:#fcfafff2;border-top:1px solid #e4dcef}#pagination,#page-buttons{display:flex;align-items:center;justify-content:center;gap:5px;flex-wrap:wrap}#archive-pagination button{margin:0;min-width:32px;height:32px;padding:4px 9px;border-radius:9px;font-size:13px}#archive-pagination button:hover:not(:disabled){border-color:#a48bd9;background:#f0eafa}#archive-pagination button[aria-current="page"]{background:#7056c4;border-color:#7056c4;color:white}#archive-pagination #page{font-size:11px;color:#897a99;margin-top:6px}[hidden]{display:none!important}html{scroll-padding-bottom:100px}body{min-height:100vh;padding-bottom:100px}#archive-pagination button:focus-visible{outline:2px solid #a48bd9;outline-offset:2px}@media(max-width:600px){#archive-pagination{padding:8px}#pagination,#page-buttons{gap:3px}#archive-pagination button{min-width:27px;padding:3px 6px;height:30px}}
 </style>
-<header><div id="header-panel"><div class="header-clip"><div id="header-content"><h1 id="title"></h1><div id="meta"></div><div class="filters"><label class="search">搜索消息或发送者<input id="search" type="search" placeholder="搜索这份归档"></label><label>开始时间（北京时间）<input id="start" type="datetime-local" step="1"></label><label>结束时间（北京时间）<input id="end" type="datetime-local" step="1"></label><button id="go">筛选</button><button id="reset">显示全部</button></div><div id="selection" aria-live="polite"></div></div></div></div><div class="header-toggle-row"><button id="toggle-header" type="button" aria-controls="header-panel" aria-expanded="true" title="收起顶栏"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 12 5-5 5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr-only">收起顶栏</span></button></div></header><main id="messages"></main><div id="notice" role="status"></div><footer><button id="prev">上一页</button><span id="page"></span><button id="next">下一页</button></footer>
+<header><div id="header-panel"><div class="header-clip"><div id="header-content"><h1 id="title"></h1><div id="meta"></div><div class="filters"><label class="search">搜索消息或发送者<input id="search" type="search" placeholder="搜索这份归档"></label><moect-date-range id="date-range"></moect-date-range><input id="start" type="hidden"><input id="end" type="hidden"><button id="go">筛选</button><button id="reset">显示全部</button></div><div id="selection" aria-live="polite"></div></div></div></div><div class="header-toggle-row"><button id="toggle-header" type="button" aria-controls="header-panel" aria-expanded="true" title="收起顶栏"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 12 5-5 5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr-only">收起顶栏</span></button></div></header><main id="messages"></main><div id="notice" role="status"></div><footer id="archive-pagination"><nav id="pagination" aria-label="聊天记录分页"><button id="prev" aria-label="上一页">‹</button><button id="prev-group" hidden>上一列</button><span id="page-buttons"></span><button id="next-group" hidden>下一列</button><button id="next" aria-label="下一页">›</button></nav><div id="page" role="status"></div></footer>
+<script>__DATE_RANGE_PICKER__</script>
 <script>
 const manifest=__MANIFEST__;
-let page=0,records=[],generation=0,total=0,chunkQueue=Promise.resolve(),selection=null;
+let page=0,pageGroup=0,reading=false,records=[],generation=0,total=0,chunkQueue=Promise.resolve(),selection=null;
 const size=80,$=s=>document.querySelector(s),chunkCache=new Map();
 $('#title').textContent=manifest.name;document.title=manifest.name+' · 聊天记录';
 $('#meta').textContent=(manifest.demo?'演示数据 · ':'')+manifest.count+' 条消息 · '+manifest.exported_at+' · Moect';
@@ -47,7 +50,7 @@ function renderResources(parent,message,filter=()=>true){
    if(r.kind==='image'){el.alt=message.kind==='emoji'?'表情':r.role==='thumbnail'?'缩略图':'图片';el.loading='lazy';const a=anchor(block,r.path,'',true);if(a)a.append(el)}else{el.controls=true;el.preload='metadata';el.setAttribute('playsinline','');block.append(el)}
    el.onerror=()=>{if(block.querySelector('.resource-note'))return;const note=document.createElement('small');note.className='resource-note';note.textContent='浏览器未能加载这个资源。';block.append(note);anchor(block,r.path,'打开原文件',true)};
   }
-  if(!(playable&&r.kind==='image')){
+  if(!playable){
    const label=['image','emoji'].includes(message.kind)?(r.status==='encrypted'?'下载未解密原文件':'下载原文件'):(r.status==='encrypted'?'未解密文件：':r.status==='available'?'打开附件：':'原文件：')+r.name;
    anchor(block,r.path,label,true);
   }
@@ -104,20 +107,32 @@ function renderCard(parent,m){
  if(m.kind==='miniprogram'&&!href)footer.append(element('span','wx-card-status','在微信中打开'));
  parent.append(card);return true
 }
-function renderContent(parent,m,withQuote=true){const forward=renderForward(parent,m),card=!forward&&renderCard(parent,m);if(!forward&&!card)textWithLinks(parent,m.text||'');if(card&&parent.classList.contains('bubble'))parent.classList.add('has-card');if(withQuote)renderQuote(parent,m);renderResources(parent,m,r=>!card||(!['thumbnail','source_icon'].includes(r.role)&&!(m.kind==='file'&&r.kind==='file'&&r.status==='available')));if(m.resource_notice)parent.append(element('p','resource-note',m.resource_notice))}
+function messageText(m){const placeholders={image:'[图片]',emoji:'[动画表情]',voice:'[语音]'};const text=String(m.text||'');return placeholders[m.kind]===text.trim()?'':text}
+function renderContent(parent,m,withQuote=true){const forward=renderForward(parent,m),card=!forward&&renderCard(parent,m);if(!forward&&!card)textWithLinks(parent,messageText(m));if(card&&parent.classList.contains('bubble'))parent.classList.add('has-card');if(withQuote)renderQuote(parent,m);renderResources(parent,m,r=>!card||(!['thumbnail','source_icon'].includes(r.role)&&!(m.kind==='file'&&r.kind==='file'&&r.status==='available')));if(m.resource_notice)parent.append(element('p','resource-note',m.resource_notice))}
 function renderQuote(parent,m){const q=m.quote||m.extra?.reply;if(!q)return;const card=element('blockquote','quote');card.append(element('strong','',(q.sender||'引用消息')+(q.time_str?' · '+q.time_str:'')));renderContent(card,q,false);if(q.server_id&&String(q.server_id)!=='0'){const button=element('button','reply-jump','查看原消息');button.onclick=()=>jump(String(q.server_id));card.append(button)}parent.append(card)}
+function isSystemMessage(m){return m.kind==='system'||[10000,10002].includes(Number(m.type))}
+function paginationModel(count,current,group=null){const pages=Math.ceil(Math.max(0,count)/size),selected=Math.max(0,Math.min(current,Math.max(0,pages-1))),start=Math.max(0,Math.min(group===null?Math.floor(selected/10)*10:Math.floor(group/10)*10,Math.floor(Math.max(0,pages-1)/10)*10));return {pages,selected,start,numbers:Array.from({length:Math.min(10,Math.max(0,pages-start))},(_,i)=>start+i+1),previousGroup:start>0,nextGroup:start+10<pages}}
+function renderPagination(align=true){
+ const model=paginationModel(total,page,align?null:pageGroup);pageGroup=model.start;
+ const box=$('#page-buttons');box.replaceChildren();
+ for(const number of model.numbers){const button=element('button','',number);button.type='button';button.disabled=reading;button.setAttribute('aria-label','第 '+number+' 页');if(number===page+1)button.setAttribute('aria-current','page');button.onclick=()=>goPage(number-1);box.append(button)}
+ $('#page').textContent='第 '+(total?page+1:0)+' / '+model.pages+' 页';
+ $('#prev').disabled=reading||!page;$('#next').disabled=reading||page+1>=model.pages;
+ for(const [id,available] of [['#prev-group',model.previousGroup],['#next-group',model.nextGroup]]){$(id).hidden=model.pages<=10;$(id).disabled=reading||!available;}
+}
+async function goPage(index){if(reading)return;page=paginationModel(total,index).selected;const expected=generation+1;await query(false);if(generation===expected)scrollTo(0,0)}
 function draw(){
  const box=$('#messages');box.replaceChildren();
- for(const m of records){const row=element('div','row'+(m.is_sender?' me':''));row.dataset.messageId=String(m.server_id||'');const a=element('div','avatar',(m.sender||'?').slice(0,1));if(localPath(m.avatar)){const img=element('img');img.src=m.avatar;img.alt=m.sender;img.loading='lazy';img.onerror=()=>{img.remove();a.textContent=(m.sender||'?').slice(0,1)};a.replaceChildren(img)}const body=element('div','body'),by=element('div','by',m.sender+' · '+m.time_str),bubble=element('div','bubble');renderContent(bubble,m);body.append(by,bubble);row.append(a,body);box.append(row)}
- $('#page').textContent=(total?page+1:0)+' / '+Math.max(1,Math.ceil(total/size));$('#prev').disabled=!page;$('#next').disabled=(page+1)*size>=total;$('#selection').textContent='匹配 '+total+' 条 · 共 '+manifest.count+' 条';$('#notice').textContent=records.length?'':'没有匹配的消息'
+ for(const m of records){const system=isSystemMessage(m),row=element('div','row'+(system?' system':m.is_sender?' me':''));row.dataset.messageId=String(m.server_id||'');if(system){const notice=element('div','system-text',m.text||'');notice.title=m.time_str||'';row.append(notice);box.append(row);continue}const a=element('div','avatar',(m.sender||'?').slice(0,1));if(localPath(m.avatar)){const img=element('img');img.src=m.avatar;img.alt=m.sender;img.loading='lazy';img.onerror=()=>{img.remove();a.textContent=(m.sender||'?').slice(0,1)};a.replaceChildren(img)}const body=element('div','body'),by=element('div','by',m.sender+' · '+m.time_str),bubble=element('div','bubble');renderContent(bubble,m);body.append(by,bubble);row.append(a,body);box.append(row)}
+ renderPagination();$('#selection').textContent='匹配 '+total+' 条 · 共 '+manifest.count+' 条';$('#notice').textContent=records.length?'':'没有匹配的消息'
 }
 function searchable(m){return [m.text,m.sender,m.extra?.title,m.extra?.description,m.extra?.url,m.quote?.text,m.quote?.sender,m.forward?.title,...(m.forward?.preview||[]).map(p=>p.sender+' '+p.text),...(m.resources||[]).map(r=>r.name)].filter(Boolean).join(' ').toLocaleLowerCase()}
 function filters(){const q=$('#search').value.trim().toLocaleLowerCase();function stamp(value,end){if(!value)return null;const n=Date.parse(value+'+08:00')/1000;if(!Number.isFinite(n))throw new Error('请选择有效的时间');return n+(end&&value.length===16?59:0)}const start=stamp($('#start').value,false),end=stamp($('#end').value,true);if(start!==null&&end!==null&&end<start)throw new Error('结束时间不能早于开始时间');return {q,start,end}}
 function matches(m,f){const ts=Number(m.create_time||0);return (f.start===null||ts>=f.start)&&(f.end===null||ts<=f.end)&&(!f.q||searchable(m).includes(f.q))}
 function outside(chunk,f){return (f.start!==null&&chunk.end_time!=null&&chunk.end_time<f.start)||(f.end!==null&&chunk.start_time!=null&&chunk.start_time>f.end)}
 async function query(reset=true){
- let f;try{f=filters()}catch(e){$('#notice').textContent=e.message;return}if(reset)page=0;
- const id=++generation,key=JSON.stringify(f);$('#go').disabled=true;$('#prev').disabled=true;$('#next').disabled=true;$('#notice').textContent='正在读取本地归档…';
+ let f;try{f=filters()}catch(e){$('#notice').textContent=e.message;return}
+ const id=++generation,key=JSON.stringify(f);reading=true;renderPagination(false);$('#go').disabled=true;$('#prev').disabled=true;$('#next').disabled=true;$('#notice').textContent='正在读取本地归档…';
  try{
   if(!selection||selection.key!==key){
    const counts=[];let matched=0;
@@ -130,16 +145,17 @@ async function query(reset=true){
    }
    if(id!==generation)return;selection={key,counts,total:matched}
   }
-  total=selection.total;page=Math.max(0,Math.min(page,Math.max(0,Math.ceil(total/size)-1)));
+  total=selection.total;if(reset)page=Math.max(0,Math.ceil(total/size)-1);page=Math.max(0,Math.min(page,Math.max(0,Math.ceil(total/size)-1)));
   const result=[];let offset=page*size;
   for(let i=0;i<selection.counts.length&&result.length<size;i++){
    const n=selection.counts[i];if(offset>=n){offset-=n;continue}
    const batch=await load(i);if(id!==generation)return;
    for(const m of batch){if(!matches(m,f))continue;if(offset){offset--;continue}result.push(m);if(result.length>=size)break}
   }
-  records=result;draw()
- }catch(e){$('#notice').textContent=e.message}finally{if(id===generation)$('#go').disabled=false}
+  records=result;draw();if(reset)requestAnimationFrame(()=>{if(id===generation)scrollTo(0,document.documentElement.scrollHeight)})
+ }catch(e){$('#notice').textContent=e.message}finally{if(id===generation){reading=false;$('#go').disabled=false;renderPagination(false)}}
 }
-async function jump(target){const id=++generation;let position=0;$('#notice').textContent='正在定位原消息…';try{for(let i=0;i<manifest.chunks.length;i++){const batch=await load(i);if(id!==generation)return;for(const m of batch){if(String(m.server_id)===target){$('#search').value='';$('#start').value='';$('#end').value='';page=Math.floor(position/size);await query(false);const row=[...document.querySelectorAll('.row')].find(r=>r.dataset.messageId===target);if(row){row.scrollIntoView({block:'center',behavior:'smooth'});row.classList.add('focused')}return}position++}}$('#notice').textContent='原消息不在本次导出范围，已展示可用的引用内容。'}catch(e){$('#notice').textContent=e.message}}
-$('#go').onclick=()=>query();for(const input of ['#search','#start','#end'])$(input).onkeydown=e=>{if(e.key==='Enter')query()};$('#reset').onclick=()=>{$('#search').value='';$('#start').value='';$('#end').value='';query()};$('#prev').onclick=()=>{page--;query(false);scrollTo(0,0)};$('#next').onclick=()=>{page++;query(false);scrollTo(0,0)};query();
+async function jump(target){const id=++generation;let position=0;$('#notice').textContent='正在定位原消息…';try{for(let i=0;i<manifest.chunks.length;i++){const batch=await load(i);if(id!==generation)return;for(const m of batch){if(String(m.server_id)===target){$('#search').value='';$('#start').value='';$('#end').value='';$('#date-range').setAttribute('start','');$('#date-range').setAttribute('end','');page=Math.floor(position/size);await query(false);const row=[...document.querySelectorAll('.row')].find(r=>r.dataset.messageId===target);if(row){row.scrollIntoView({block:'center',behavior:'smooth'});row.classList.add('focused')}return}position++}}$('#notice').textContent='原消息不在本次导出范围，已展示可用的引用内容。'}catch(e){$('#notice').textContent=e.message}}
+$('#date-range').addEventListener('range-change',e=>{$('#start').value=e.detail.start;$('#end').value=e.detail.end;query()});
+$('#go').onclick=()=>query();for(const input of ['#search','#start','#end'])$(input).onkeydown=e=>{if(e.key==='Enter')query()};$('#reset').onclick=()=>{$('#search').value='';$('#start').value='';$('#end').value='';$('#date-range').setAttribute('start','');$('#date-range').setAttribute('end','');query()};$('#prev').onclick=()=>goPage(page-1);$('#next').onclick=()=>goPage(page+1);$('#prev-group').onclick=()=>{pageGroup-=10;renderPagination(false)};$('#next-group').onclick=()=>{pageGroup+=10;renderPagination(false)};query();
 </script></html>

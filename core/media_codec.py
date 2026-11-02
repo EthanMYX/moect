@@ -7,6 +7,8 @@ import re
 import subprocess
 import tempfile
 import time
+import struct
+import wave
 from pathlib import Path
 from Cryptodome.Cipher import AES
 from PIL import Image, UnidentifiedImageError
@@ -336,6 +338,52 @@ class ImageKeys:
 class MediaCodec:
     def __init__(self,cancel):self.cancel=cancel
 
+    def audio(self,blob,destination):
+        """Decode WeChat's SILK packets to portable, mono PCM WAV audio.
+
+        FFmpeg does not decode Tencent SILK. Validate packet boundaries before
+        calling the native SILK decoder; never label the original as playable.
+        """
+        self.cancel();destination=Path(destination)
+        if not blob or len(blob)>16*1024*1024:return None
+        raw=blob[1:] if blob.startswith(b'\x02#!SILK_V3') else blob
+        if raw.startswith(b'#!SILK_V3'):
+            offset=9;packets=0;end=len(raw)
+            while offset<end:
+                self.cancel()
+                if offset+2>end:return None
+                length=struct.unpack_from('<h',raw,offset)[0];offset+=2
+                if length==-1 and offset==end:
+                    raw=raw[:-2];break  # Standard SILK end marker, absent in WeChat.
+                if length<0 or length>5120 or offset+length>end:return None
+                offset+=length;packets+=1
+                if packets>30000:return None
+            if not packets:return None
+            try:
+                import pysilk
+                pcm=pysilk.decode(b'\x02'+raw,sample_rate=24000)
+                self.cancel()
+                if not pcm or len(pcm)%2 or len(pcm)>144*1024*1024:return None
+                with wave.open(str(destination),'wb') as output:
+                    output.setnchannels(1);output.setsampwidth(2);output.setframerate(24000)
+                    output.writeframes(pcm)
+                return destination
+            except (ImportError,RuntimeError,ValueError,OSError,struct.error,wave.Error):
+                destination.unlink(missing_ok=True)
+                return None
+        # Some imported archives contain an ordinary audio stream instead.
+        with tempfile.TemporaryDirectory(prefix='moect-audio-') as tmp:
+            source=Path(tmp)/'voice';source.write_bytes(blob)
+            try:
+                code,_=self._run(['-loglevel','error','-protocol_whitelist','file,pipe',
+                    '-i',str(source),'-vn','-ac','1','-ar','24000','-c:a','pcm_s16le',str(destination)],45)
+                if code==0 and destination.is_file():
+                    with wave.open(str(destination),'rb') as result:
+                        if result.getnframes()>0:return destination
+            except (OSError,TimeoutError,wave.Error):pass
+        destination.unlink(missing_ok=True)
+        return None
+
     def _run(self,args,timeout=45):
         import imageio_ffmpeg
         exe=imageio_ffmpeg.get_ffmpeg_exe()
@@ -412,3 +460,33 @@ class MediaCodec:
                 '-c:a','aac','-movflags','+faststart',str(destination)],600)
             return destination if code==0 and destination.is_file() else None
         except (OSError,TimeoutError):return None
+
+    def sticker(self,blob):
+        """Keep original GIF/WebP animation; convert WXGF HEVC frames to GIF."""
+        if valid_image(blob):return raster_payload(blob)
+        if not blob.startswith(b'wxgf'):return None
+        starts=list(re.finditer(b'\x00\x00(?:\x00)?\x01',blob[4:]))
+        units=[]
+        for i,match in enumerate(starts):
+            begin=4+match.end();end=4+starts[i+1].start() if i+1<len(starts) else len(blob)
+            unit=blob[begin:end]
+            if len(unit)>=2 and not unit[0]&128 and unit[1]&7:units.append(unit)
+        boundaries=[i for i,u in enumerate(units) if (u[0]>>1)&63==32]
+        candidates=[]
+        for i,start in enumerate(boundaries):
+            group=units[start:boundaries[i+1] if i+1<len(boundaries) else len(units)]
+            if any((u[0]>>1)&63<32 for u in group):candidates.append(b''.join(b'\0\0\0\1'+u for u in group))
+        if not candidates:return None
+        with tempfile.TemporaryDirectory(prefix='moect-sticker-') as tmp:
+            source=Path(tmp)/'animation.hevc';target=Path(tmp)/'animation.gif'
+            for stream in sorted(candidates,key=len,reverse=True)[:3]:
+                self.cancel();source.write_bytes(stream);target.unlink(missing_ok=True)
+                try:
+                    code,_=self._run(['-loglevel','error','-protocol_whitelist','file,pipe','-f','hevc','-i',str(source),
+                        '-filter_complex','[0:v]scale=w=min(1024\\,iw):h=-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse',
+                        '-loop','0',str(target)],60)
+                    if code==0 and target.is_file():
+                        result=target.read_bytes()
+                        if valid_image(result):return result
+                except (OSError,TimeoutError):continue
+        return None

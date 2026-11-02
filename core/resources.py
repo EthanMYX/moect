@@ -27,7 +27,7 @@ HASH=re.compile(r'(?i)(?<![a-f0-9])[a-f0-9]{32}(?![a-f0-9])')
 def media_url(url):
     try:
         p=urlparse(url);host=(p.hostname or '').lower()
-        domains=('qpic.cn','qlogo.cn','weixin.qq.com','wxs.qq.com','wxapp.tc.qq.com','vweixinf.tc.qq.com')
+        domains=('qpic.cn','qlogo.cn','weixin.qq.com','wxs.qq.com','wxapp.tc.qq.com','vweixinf.tc.qq.com','vweixin.tc.qq.com')
         return len(url)<=8192 and p.scheme in ('http','https') and not p.username and p.port in (None,80,443) and any(host==d or host.endswith('.'+d) for d in domains)
     except ValueError:return False
 
@@ -418,7 +418,15 @@ class ResourceStore:
             self._emoticon_hints(msg)
         if kind=='voice' and not skip:
             blob=self.data.voice_blob(self.session,msg.get('server_id'))
-            if blob:resources.append(self._copy('voice_'+str(msg['server_id'])+'.silk','audio',blob,'.silk'))
+            if blob:
+                identity='voice_'+str(msg['server_id'])+'.silk'
+                converted=self.codec.audio(blob,Path(self.tmp.name)/'playback.wav')
+                if converted:
+                    resources.append(self._copy(converted,'audio',extension='.wav',identity_source=identity))
+                else:
+                    # A failed conversion is an unsupported original, rather
+                    # than an available audio resource that browsers cannot play.
+                    resources.append(self._copy(identity,'original',blob,'.silk',status='unsupported'))
         if kind in ('image','emoji','video','file') and not skip:
             candidates=self._candidates(msg)
             samples=[Path(p) for p, in self.index.execute("SELECT path FROM files WHERE name LIKE '%.dat' ORDER BY scoped DESC,name LIMIT 40")]
@@ -464,12 +472,15 @@ class ResourceStore:
                 source,status=fallback
                 resources.append(self._copy(source,'original',status=status))
                 if kind in ('image','emoji'):image_diagnostics=fallback_diagnostics
+            elif kind=='voice' and resources:status='unsupported'
             else:self.stats['missing']+=1
             notices={'missing':'本机附件或有效 CDN 资源尚不可用，请在微信下载原文件后重新导出。',
                 'encrypted':'未取得通过完整校验的图片解密材料，已保留加密原文件。请保持微信登录，在微信打开原图后重新导出。',
                 'unsupported':'原文件已保存，但浏览器格式转换未成功。',
                 'corrupt':'文件内容未能通过格式校验，已保留原文件。'}
             msg['resource_status']=status;msg['resource_notice']=notices[status]
+            if kind=='voice' and status=='unsupported':
+                msg['resource_notice']='语音数据未能转换为可播放格式，已保留原始文件。'
             if status=='encrypted':
                 reason=image_diagnostics.get('reason')
                 if reason=='aes_key_unavailable':msg['resource_notice']='尚未找到通过完整 AES 校验的图片密钥，已保留加密原文件。保持微信登录并打开原图后重新导出；若微信以管理员运行，请以同等权限打开本软件。'

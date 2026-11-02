@@ -110,6 +110,8 @@ function renderMetaParts(item: SessionItem, group: Group | null, friend: Friend 
 }
 
 export interface SessionListProps {
+  sortPreference?: {field:SortField;order:SortOrder}
+  onSortPreferenceChange?: (value:{field:SortField;order:SortOrder})=>void
   groups: Group[]
   friends: Friend[]
   isLoading?: boolean
@@ -145,6 +147,8 @@ export interface SessionListProps {
 
 
 function SessionListComponent({
+  sortPreference,
+  onSortPreferenceChange,
   groups,
   friends,
   isLoading = false,
@@ -189,6 +193,8 @@ function SessionListComponent({
     groupCount,
     friendCount,
   } = useSessionFilter(groups, friends, {
+    sortPreference,
+    onSortPreferenceChange,
     recentActivityMap,
     taskStatsMap,
   })
@@ -257,16 +263,16 @@ function SessionListComponent({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't trigger if user is typing in an input
-      const isInputFocused = document.activeElement?.tagName === 'INPUT' || 
+      const isInputFocused = document.activeElement?.tagName === 'INPUT' ||
                              document.activeElement?.tagName === 'TEXTAREA'
-      
+
       // Focus search with /
       if (e.key === '/' && !isInputFocused) {
         e.preventDefault()
         searchInputRef.current?.focus()
         return
       }
-      
+
       // Clear search or exit batch mode with Escape
       if (e.key === 'Escape') {
         if (search) {
@@ -277,7 +283,7 @@ function SessionListComponent({
         searchInputRef.current?.blur()
         return
       }
-      
+
       // Navigate pages with arrow keys (when not in input)
       if (!isInputFocused) {
         if (e.key === 'ArrowLeft' && hasPrevPage) {
@@ -675,7 +681,7 @@ function SessionListComponent({
             >
               <ChevronLeft className="w-3.5 h-3.5" />
             </Button>
-            
+
             <div className="flex items-center gap-1 px-2">
               <span className="text-sm font-medium">{page}</span>
               <span className="text-sm text-muted-foreground/50">/</span>

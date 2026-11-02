@@ -1,8 +1,8 @@
 # 构建 Moect
 
-## 环境
+## 开发环境
 
-Windows x64、Python 3.11 x64、Node.js 22+。安装器使用 Inno Setup 6.5+。开发依赖见根目录 requirements.txt 和 frontend/package-lock.json。
+Windows x64、Python 3.11 x64、Node.js 22+；安装器使用 Inno Setup 6.5+。Python 依赖见 `requirements.txt`，前端依赖由 `frontend/package-lock.json` 锁定。
 
 ```powershell
 python -m venv .venv
@@ -13,25 +13,34 @@ npm run build --prefix frontend
 Copy-Item ui/icon.svg ui-qce/icon.svg
 python build.py
 .\installer\build.ps1 -OutputDirectory .\release
+python scripts/package_release.py .\release --no-source
 ```
 
-程序产物为 `dist\Moect\Moect.exe` 及其完整 `_internal` 文件夹；安装产物为 `release\Moect-1.1.5-Setup-x64.exe`。版本统一取自 `core/version.py`，安装脚本读取已构建 EXE 的版本。
+`build.py` 从 `core/version.py` 读取版本，生成 `dist/Moect/Moect.exe`、完整依赖目录、独立更新组件及受管理文件清单。安装脚本读取 EXE 版本并生成 `Moect-版本号-Setup-x64.exe`；打包脚本生成便携 ZIP 与校验文件。便携包不附带使用说明和修复说明，保留运行依赖及许可证。
 
-`installer/build.ps1` 首次从 Microsoft 官方地址下载 WebView2 引导程序到忽略的 `build-support` 目录，并验证 Microsoft Authenticode 签名后才编译。安装器按当前用户安装，检测 HKCU / HKLM 的 WebView2 运行环境；仅在缺失时执行引导程序。程序未附带 Authenticode 代码签名证书。
+程序入口是 `edge_app.py`，前端构建至 `ui-qce`。`app.py` 为保留的旧 Qt 宿主，不进入当前桌面发行包。修改前端后重新构建并恢复图标，再进行 Python 打包。
 
-安装器中文翻译来自 Inno Setup 官方源代码仓库的 `Files/Languages/ChineseSimplified.isl`，文件保留原维护者信息。
+安装器允许选择安装位置与桌面快捷方式，使用当前用户权限。首次构建从 Microsoft 官方地址获取 WebView2 引导程序并校验其 Microsoft Authenticode 签名；用户安装时仅在缺少运行环境的情况下执行。Inno Setup 中文翻译保留原维护者信息。
 
-入口为 `edge_app.py`。`app.py` 是保留的旧 Qt 宿主，不进入当前发布程序。修改前端后需要重新执行前端构建并复制图标，再执行 Python 打包。
+## 发布
 
-## README 宣传图
+GitHub 版本标签应指向与二进制对应的源码提交。安装包与便携版发布到 Release，源码可通过该标签获取；公开的 SHA256SUMS.txt 只列出公开发行附件。
+
+`scripts/publish_release.py` 使用本机已配置的 GitHub 凭据完成草稿、上传校验和正式发布，不把凭据写入仓库。其发布参数只接受安装包、便携 ZIP 与公开校验文件。内置公告/更新服务由独立的签名发布通道管理，详见 [公告与更新](announcements-updates.md)。
+
+## 可选作者工具
+
+发布中心是独立入口 `publisher_app.py`，可在 frontend 目录执行以下命令构建界面，再运行 `python build_publisher.py`：
 
 ```powershell
-pip install playwright
-python docs/tools/render_assets.py
+npx tsc --noEmit
+npx vite build --config vite.publisher.config.ts
 ```
 
-脚本使用已安装的 Microsoft Edge，无需下载额外浏览器。在隔离临时目录中生成虚构数据，把真实前端和查看器渲染为截图，再用 HTML/CSS 组合成紫色宣传图。不会读取本机微信数据库，也不会操作用户现有窗口。成品位于 `docs/images`；中间截图和页面被 Git 忽略。
+该工具需要作者自己的签名私钥和服务授权。构建仅收集程序代码、公开验签配置、界面与许可证，不包含作者资料或授权文件。使用方式见 [发布中心](publisher.md)。
 
-## 本次发布检查
+## 验证与宣传图
 
-1.1.5 进行了 25 项合成数据库与资源测试、Python AST/Ruff 静态检查、TypeScript/Vite 构建、PyInstaller 及 Inno Setup 编译。没有读取反馈用户的真实聊天数据或运行桌面界面回归测试。软件界面由用户检查。
+测试使用合成数据库与虚构媒体。可运行 `python -m unittest` 执行后端测试；构建界面回归使用 Playwright 与已安装的 Microsoft Edge。不会为测试上传真实聊天记录。
+
+`docs/tools/render_assets.py` 将虚构演示数据渲染为 README 宣传图。字体、第三方许可证和媒体来源信息保留在 `THIRD_PARTY_LICENSES`、`THIRD_PARTY_NOTICES.md`。

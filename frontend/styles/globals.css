@@ -131,32 +131,14 @@ html.qce-inter body {
   --font-geist-sans: 'Inter Variable', GeistSans, 'GeistSans Fallback', sans-serif;
 }
 
-/* Scrollbar styling for Linear-like feel */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: oklch(0.8 0 0);
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: oklch(0.7 0 0);
-}
-
-.dark ::-webkit-scrollbar-thumb {
-  background: oklch(0.3 0 0);
-}
-
-.dark ::-webkit-scrollbar-thumb:hover {
-  background: oklch(0.4 0 0);
-}
+/* Native and WebKit scrollbars follow the current accent in either theme. */
+:root{--scrollbar-thumb:color-mix(in srgb,var(--primary) 50%,var(--background));--moect-backdrop:rgba(0,0,0,.25)}
+.dark{--moect-backdrop:rgba(0,0,0,.5)}
+*{scrollbar-width:thin;scrollbar-color:var(--scrollbar-thumb) transparent}
+::-webkit-scrollbar{width:7px;height:7px}
+::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--scrollbar-thumb);border-radius:99px}
+::-webkit-scrollbar-thumb:hover{background:var(--primary)}
 
 @keyframes shimmer {
   0% {
@@ -176,3 +158,5 @@ html.qce-inter body {
   from { opacity: 1; transform: translateY(0) scale(1); }
   to { opacity: 0; transform: translateY(-6px) scale(0.96); }
 }
+
+.about-page{min-height:100%;display:flex;flex-direction:column}.about-signature{margin-top:auto;flex-shrink:0;padding:24px 24px 20px;text-align:center}.about-signature button{font-size:11px;color:var(--muted-foreground);opacity:.65;transition:opacity .2s,color .2s}.about-signature button:hover{opacity:1;color:var(--primary)}

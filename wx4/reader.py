@@ -510,15 +510,20 @@ class Wx4Data:
         mtype = normalize_local_type(raw_type)
         content = decode_content(r["message_content"], r["compress_content"])
         sender = id2name.get(r["real_sender_id"], "")
-        # 群消息正文常以 "wxid:\n" 开头，可自证发送者
-        if content[:1] and "\n" in content[:80]:
-            head, rest = content.split("\n", 1)
-            if head.endswith(":"):
-                maybe = head[:-1].strip()
-                if maybe and ("@" in maybe or maybe.startswith("wxid_")) and " " not in maybe:
-                    if not sender:
-                        sender = maybe
-                    content = rest
+        # A group wire body begins with the sender's actual username, which
+        # may be a legacy custom ID rather than wxid_*. Strip only a verified
+        # identity; ordinary/private text such as "Note:\n..." must survive.
+        if session.endswith('@chatroom') and "\n" in content[:256]:
+            head,rest=content.split('\n',1);head=head.rstrip('\r')
+            if head.endswith(':'):
+                maybe=head[:-1]
+                if re.fullmatch(r'[A-Za-z0-9_][A-Za-z0-9_.@-]{1,190}',maybe):
+                    known=maybe==sender or maybe in self.contacts or maybe in id2name.values() or maybe in self.room_members.get(session,())
+                    alias=(self.contacts.get(sender) or {}).get('alias') if sender else ''
+                    recognizable=not sender and (maybe.startswith('wxid_') or maybe.endswith('@openim'))
+                    if known or maybe==alias or recognizable:
+                        if not sender:sender=maybe
+                        content=rest
         msg = {
             "local_id": r["local_id"],
             # SQLite IDs exceed JavaScript's safe integer range. Preserve exact
@@ -599,9 +604,15 @@ class Wx4Data:
         root = _xml(content)
         if root is None:
             return content or "[系统消息]"
-        node = _find(root, "content")
-        if node is not None and node.text:
-            return node.text
+        for name in ('replacemsg','content'):
+            node = _find(root, name)
+            if node is not None:
+                value=''.join(node.itertext()).strip()
+                if value:
+                    # Recall replacement strings may contain a tiny rich-text
+                    # fragment inside CDATA; render its text without XML tags.
+                    fragment=_xml('<root>'+value+'</root>') if '<' in value else None
+                    return ''.join(fragment.itertext()) if fragment is not None else value
         return content or "[系统消息]"
 
     def _describe_appmsg(self, msg: dict, out: dict) -> dict:

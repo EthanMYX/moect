@@ -13,7 +13,7 @@ from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineCore import QWebEngineUrlRequestInterceptor, QWebEnginePage, QWebEngineSettings, QWebEngineProfile
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from core.service import Service
-from core.version import PROJECT_URL
+from core.version import SOURCE_URLS
 from core.window_chrome import configure_frame, native_message
 
 BASE = Path(getattr(sys, '_MEIPASS', Path(__file__).parent))
@@ -66,6 +66,13 @@ class Bridge(QObject):
             if not isinstance(payload,dict): raise ValueError('请求无效')
             if action.startswith('window_'):
                 if action=='window_drag':self.window.windowHandle().startSystemMove()
+                elif action=='window_resize':
+                    edge=payload.get('edge')
+                    edges={'n':Qt.TopEdge,'s':Qt.BottomEdge,'w':Qt.LeftEdge,'e':Qt.RightEdge,
+                           'nw':Qt.TopEdge|Qt.LeftEdge,'ne':Qt.TopEdge|Qt.RightEdge,
+                           'sw':Qt.BottomEdge|Qt.LeftEdge,'se':Qt.BottomEdge|Qt.RightEdge}
+                    if edge not in edges:raise ValueError('窗口边缘无效')
+                    if not self.window.isMaximized():self.window.windowHandle().startSystemResize(edges[edge])
                 elif action=='window_minimize':self.window.showMinimized()
                 elif action=='window_maximize':
                     self.window.showNormal() if self.window.isMaximized() else self.window.showMaximized()
@@ -91,11 +98,13 @@ class Bridge(QObject):
                 elif not QDesktopServices.openUrl(QUrl.fromLocalFile(str(target))):raise ValueError('无法打开文件位置')
                 self.send(request_id,{'ok':True}); return
             if action=='source':
-                urls={'wechat':'https://github.com/LC044/WeChatMsg',
-                      'wx4':'https://github.com/chenanhan230-del/WeChatMsg-4x',
-                      'project':PROJECT_URL,'qce':PROJECT_URL}
-                if payload.get('name') in urls: QDesktopServices.openUrl(QUrl(urls[payload['name']]))
+                if payload.get('name') in SOURCE_URLS: QDesktopServices.openUrl(QUrl(SOURCE_URLS[payload['name']]))
                 self.send(request_id,{'ok':True}); return
+            if action=='online_open_link':
+                from core.online_protocol import web_url
+                QDesktopServices.openUrl(QUrl(web_url(payload.get('url'))));self.send(request_id,{'ok':True});return
+            if action=='update_apply':
+                result=self.service.online.prepare_apply();self.send(request_id,result);self.window.close();return
             def work(rid=request_id, a=action, p=payload):
                 try:
                     if a=='import_path': result=self.service.import_archive(p['path'])

@@ -1,6 +1,6 @@
 ; Build with installer/build.ps1 after python build.py.
 #ifndef AppVersion
-  #define AppVersion "1.1.5"
+  #define AppVersion "1.2.0"
 #endif
 
 [Setup]
@@ -43,6 +43,7 @@ VersionInfoDescription=Moect 安装程序
 Name: "chinesesimp"; MessagesFile: "ChineseSimplified.isl"
 
 [Messages]
+WindowsVersionNotSupported=Moect 当前桌面版需要 Windows 10 1809（64 位）或更新版本。Windows 7/8 无法运行随附的 Python 3.11 和现代 WebView2，安装兼容模式或更换安装位置无法解决此问题。请在 Windows 10/11 导出后，将完整 HTML 归档复制到旧电脑阅读。
 ReadyLabel1=点击“安装”，即可在这台电脑上使用 Moect。
 ReadyLabel2a=将为当前用户安装软件，并创建开始菜单入口。桌面快捷方式按您的选择创建。已有的配置、聊天快照和导出记录会保留。
 FinishedLabel=Moect 已安装完成。

@@ -3,6 +3,7 @@ import subprocess
 import os
 import sys
 import shutil
+import json
 from pathlib import Path
 from PySide6.QtGui import QImage,QPainter
 from PySide6.QtWidgets import QApplication
@@ -37,13 +38,29 @@ subprocess.run([sys.executable,'-m','PyInstaller','--noconfirm','--clean','--win
                '--manifest',str(root/'windows.manifest'),
                '--version-file',str(version_file),
                '--add-data','ui-qce;ui-qce','--add-data','ui/viewer.html;ui',
+               '--add-data','ui/collection.html;ui',
+               '--add-data','ui/date-range-picker.js;ui',
+               '--add-data','ui/online-config.json;ui',
                '--add-data','LICENSE;.','--add-data','THIRD_PARTY_NOTICES.md;.',
                '--add-data','THIRD_PARTY_LICENSES;THIRD_PARTY_LICENSES',
                '--exclude-module','PyQt5','--exclude-module','PyQt6',
                '--exclude-module','PySide6',
+               '--exclude-module','pywinauto','--exclude-module','comtypes',
                '--exclude-module','tkinter','--exclude-module','wx4.gui',
                '--exclude-module','wx4.cli','--exclude-module','wx4.export',
                '--collect-all','webview','--collect-all','pythonnet','--collect-all','clr_loader',
                '--collect-all','imageio_ffmpeg',
+               '--collect-all','pysilk',
                '--hidden-import','webview.platforms.edgechromium','--hidden-import','webview.platforms.winforms',
                'edge_app.py'],cwd=root,env=env,check=True)
+
+# The update helper has its own bundled trust key and runs outside the app dir.
+subprocess.run([sys.executable,'-m','PyInstaller','--noconfirm','--clean','--windowed','--onefile',
+    '--name','MoectUpdater','--icon',str(icon),'--distpath','build-support/updater',
+    '--manifest',str(root/'windows.manifest'),
+    '--workpath','build-support/updater-build','--specpath','build-support',
+    '--add-data',str(root/'ui/online-config.json')+';ui','--exclude-module','PySide6','--exclude-module','webview',
+    str(root/'updater.py')],cwd=root,env=env,check=True)
+destination=root/'dist/Moect';shutil.copy2(root/'build-support/updater/MoectUpdater.exe',destination/'MoectUpdater.exe')
+managed=sorted(p.relative_to(destination).as_posix() for p in destination.rglob('*') if p.is_file() and p.name!='program-files.json')
+(destination/'program-files.json').write_text(json.dumps({'version':VERSION,'files':managed},ensure_ascii=False,indent=2),encoding='utf-8')

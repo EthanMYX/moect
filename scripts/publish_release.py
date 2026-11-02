@@ -24,12 +24,19 @@ def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('directory',type=Path)
     parser.add_argument('--repository',default='mofan6/Moect')
+    parser.add_argument('--checksums',type=Path,help='Public checksum file for the two client products only.')
     args=parser.parse_args()
     owner,name=args.repository.split('/')
     paths=[args.directory/f'Moect-{VERSION}-Setup-x64.exe',
         args.directory/f'Moect-{VERSION}-Windows-x64.zip',
-        args.directory/f'Moect-{VERSION}-Source.zip',args.directory/'SHA256SUMS.txt']
+        args.checksums or args.directory/'SHA256SUMS.txt']
     if not all(p.is_file() for p in paths):raise SystemExit('Missing prepared release assets.')
+    if paths[-1].name!='SHA256SUMS.txt':raise SystemExit('Checksum asset must be named SHA256SUMS.txt.')
+    expected_checksums={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in paths[:2]}
+    supplied={}
+    for line in paths[-1].read_text(encoding='utf-8-sig').splitlines():
+        digest,name=line.split('  ',1);supplied[name]=digest
+    if supplied!=expected_checksums:raise SystemExit('Public checksums must match exactly the installer and portable ZIP.')
     env={**os.environ,'GIT_TERMINAL_PROMPT':'0'}
     result=subprocess.run(['git','credential','fill'],input='protocol=https\nhost=github.com\n\n',
         text=True,capture_output=True,env=env,check=True)
@@ -48,14 +55,16 @@ def main():
     sha=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
     remote=api('GET',f'/repos/{owner}/{name}/commits/main')['sha']
     if sha!=remote:raise SystemExit('Push the matching source commit first.')
-    api('PATCH',f'/repos/{owner}/{name}',{
-        'description':'Windows 微信 4.x 聊天记录导出、备份与离线归档工具 · WeChat chat history exporter & backup. 支持好友/群聊、头像、图片、GIF 表情、音视频、文件、链接、小程序、引用回复和合并转发；支持 HTML、JSON、JSONL、TXT、CSV、Markdown 导出、批量任务、消息搜索及时间筛选，提供一键安装包。',
-        'homepage':f'https://github.com/{owner}/{name}/releases/latest','has_issues':True})
-    api('PUT',f'/repos/{owner}/{name}/topics',{'names':[
-        'archive','chat-export','desktop','offline','python','react','wechat','windows',
-        'chat-archive','chat-backup','chat-history','data-export','html-export','media-export',
-        'wechat-backup','wechat-exporter','wechat-history','wechatmsg','wechat4','weixin']})
     tag='v'+VERSION
+    try:
+        reference=api('GET',f'/repos/{owner}/{name}/git/ref/tags/{tag}')['object']
+    except HTTPError as exc:
+        if exc.code!=404:raise
+    else:
+        for _ in range(4):
+            if reference['type']=='commit':break
+            reference=api('GET',f'/repos/{owner}/{name}/git/tags/{reference["sha"]}')['object']
+        if reference['type']!='commit' or reference['sha']!=sha:raise SystemExit('Existing tag points to a different source commit.')
     try:release=api('GET',f'/repos/{owner}/{name}/releases/tags/{tag}')
     except HTTPError as exc:
         if exc.code!=404:raise
@@ -64,6 +73,10 @@ def main():
             'draft':True,'prerelease':False})
     if not release['draft']:raise SystemExit('This release is already public; refusing to overwrite it.')
     if release['target_commitish'] not in (sha,'main'):raise SystemExit('Existing draft uses a different source commit.')
+    if any(a['name'] not in {p.name for p in paths} for a in release.get('assets',[])):
+        raise SystemExit('Draft has unrelated assets; refusing to publish them.')
+    api('PATCH',f'/repos/{owner}/{name}/releases/{release["id"]}',{
+        'name':'Moect '+VERSION,'body':(ROOT/f'docs/release-{VERSION}.md').read_text(encoding='utf-8')})
     print('Draft release ready',flush=True)
     assets={a['name']:a for a in release.get('assets',[])}
     for path in paths:

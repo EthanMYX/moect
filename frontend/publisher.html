@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'self' data:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'none'"><title>Moect 发布中心</title>
+<style>
+html,body{margin:0;background:#f7f5fb}#publisher-boot[hidden]{display:none!important}#publisher-boot{position:fixed;inset:0;z-index:9999;display:grid;place-content:center;text-align:center;background:#f7f5fb;color:#49385e;font:15px/1.8 'Microsoft YaHei UI',sans-serif;padding:30px}#publisher-boot img{width:62px;height:62px;margin:0 auto 18px}#publisher-boot h1{font-size:25px;font-weight:500;margin:0 0 12px}#publisher-boot p{color:#867b95;margin:5px 0;max-width:520px}#publisher-boot button{margin:20px auto 0;background:#7955c4;color:white;border:0;padding:11px 24px;border-radius:10px;font:inherit;cursor:pointer}#publisher-boot button[hidden]{display:none}
+</style></head><body>
+<div id="root"></div>
+<section id="publisher-boot" role="status"><img src="./icon.svg" alt=""><h1>Moect 发布中心</h1><p id="publisher-boot-message">正在加载界面，请稍候…</p><p id="publisher-boot-detail">草稿与作者资料保存在你的电脑上</p><button id="publisher-boot-retry" hidden>重新加载界面</button></section>
+<script>
+(function(){
+  var cover=document.getElementById('publisher-boot');
+  window.__publisherReady=false;
+  window.__publisherBoot={
+    ready:function(){window.__publisherReady=true;cover.hidden=true},
+    fail:function(){window.__publisherReady=false;cover.hidden=false;document.getElementById('publisher-boot-message').textContent='界面暂时未能载入';document.getElementById('publisher-boot-detail').textContent='已保存的草稿仍在本机，可以重新加载界面。';document.getElementById('publisher-boot-retry').hidden=false}
+  };
+  document.getElementById('publisher-boot-retry').onclick=function(){
+    var api=window.pywebview&&window.pywebview.api;
+    if(api&&api.invoke)Promise.resolve(api.invoke('publisher_reload_ui',{})).catch(function(){location.reload()});
+    else location.reload();
+  };
+  window.addEventListener('error',function(){if(!window.__publisherReady)window.__publisherBoot.fail()},true);
+  window.addEventListener('unhandledrejection',function(){if(!window.__publisherReady)window.__publisherBoot.fail()});
+})();
+</script>
+<script type="module" src="/src/publisher-main.tsx"></script>
+</body></html>
