@@ -35,7 +35,7 @@ def main():
     expected_checksums={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in paths[:2]}
     supplied={}
     for line in paths[-1].read_text(encoding='utf-8-sig').splitlines():
-        digest,name=line.split('  ',1);supplied[name]=digest
+        checksum_digest,checksum_name=line.split('  ',1);supplied[checksum_name]=checksum_digest
     if supplied!=expected_checksums:raise SystemExit('Public checksums must match exactly the installer and portable ZIP.')
     env={**os.environ,'GIT_TERMINAL_PROMPT':'0'}
     result=subprocess.run(['git','credential','fill'],input='protocol=https\nhost=github.com\n\n',
