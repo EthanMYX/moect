@@ -13,18 +13,11 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  ChevronDown,
   ArrowUpNarrowWide,
   ArrowDownWideNarrow,
   X,
   Filter,
 } from "lucide-react"
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from "./dropdown-menu"
 import { PillDropdown } from "./pill-dropdown"
 import type { CreateTaskForm, Group, Friend } from "@/types/api"
 import {
@@ -43,15 +36,7 @@ import {
 
 import { specialKindLabel } from "@/lib/special-contacts"
 
-const UIN_PATTERN = /^\d{4,12}$/
-const NUMERIC_PEER_UID_PATTERN = /^\d+$/
 const EMPTY_SELECTED_ITEMS = new Set<string>()
-
-function isRoamingEligiblePrivate(item: SessionItem): boolean {
-  if (item.type !== "friend") return false
-  const friend = item.raw as Friend
-  return (friend.chatType ?? 1) === 1 && !NUMERIC_PEER_UID_PATTERN.test(item.id)
-}
 
 /** 会话元信息之间的细分隔线（取代旧的中点分隔符，统一列表分隔样式）。 */
 const META_DIVIDER = <span aria-hidden className="h-2.5 w-px shrink-0 bg-current opacity-20" />
@@ -114,17 +99,14 @@ export interface SessionListProps {
   onSortPreferenceChange?: (value:{field:SortField;order:SortOrder})=>void
   groups: Group[]
   friends: Friend[]
-  isLoading?: boolean
   batchMode?: boolean
   selectedItems?: Set<string>
-  avatarExportLoading?: string | null
   /**
    * Issue #344: peerUid (group.groupCode / friend.uid) → 最近一条消息 ISO 时间。
    * 供「按最近活跃」排序 / 列表徽标显示。
    */
   recentActivityMap?: Record<string, string | undefined>
   taskStatsMap?: Record<string, SessionTaskStats | undefined>
-  onRefresh?: () => void
   onToggleBatchMode?: () => void
   onSelectAll?: (filteredIds?: Set<string>) => void
   onClearSelection?: () => void
@@ -140,9 +122,6 @@ export interface SessionListProps {
     preset: Pick<CreateTaskForm, "chatType" | "peerUid" | "sessionName"> &
       Partial<Pick<CreateTaskForm, "peerUin" | "historySource">>
   ) => void
-  onExportGroupAvatars?: (groupCode: string, groupName: string) => void
-  onOpenEssenceModal?: (groupCode: string, groupName: string) => void
-  onOpenGroupFilesModal?: (groupCode: string, groupName: string) => void
 }
 
 
@@ -151,13 +130,10 @@ function SessionListComponent({
   onSortPreferenceChange,
   groups,
   friends,
-  isLoading = false,
   batchMode = false,
   selectedItems = EMPTY_SELECTED_ITEMS,
-  avatarExportLoading,
   recentActivityMap,
   taskStatsMap,
-  onRefresh,
   onToggleBatchMode,
   onSelectAll,
   onClearSelection,
@@ -166,9 +142,6 @@ function SessionListComponent({
   onOpenBatchExportDialog,
   onPreviewChat,
   onOpenTaskWizard,
-  onExportGroupAvatars,
-  onOpenEssenceModal,
-  onOpenGroupFilesModal,
 }: SessionListProps) {
   const {
     search,
@@ -192,6 +165,8 @@ function SessionListComponent({
     hasPrevPage,
     groupCount,
     friendCount,
+    officialCount,
+    otherCount,
   } = useSessionFilter(groups, friends, {
     sortPreference,
     onSortPreferenceChange,
@@ -301,17 +276,6 @@ function SessionListComponent({
   }, [search, setSearch, batchMode, onToggleBatchMode, page, setPage, hasPrevPage, hasNextPage])
 
   const hasActiveFilters = search || type !== 'all'
-  const normalizedSearch = search.trim()
-  const hasExactRoamingSession = filteredItems.some((item) => {
-    if (!isRoamingEligiblePrivate(item)) return false
-    const friend = item.raw as Friend
-    return friend.uin > 0 && String(friend.uin) === normalizedSearch
-  })
-  const showQqLookupCard =
-    UIN_PATTERN.test(normalizedSearch) &&
-    Boolean(onOpenTaskWizard) &&
-    !hasExactRoamingSession
-
   const renderSessionItem = useCallback((item: SessionItem, index: number, items: SessionItem[]) => {
     const isSelected = selectedItems.has(`${item.type}_${item.id}`)
     const isPreviousSelected =
@@ -322,7 +286,6 @@ function SessionListComponent({
     const group = isGroup ? (item.raw as Group) : null
     const friend = !isGroup ? (item.raw as Friend) : null
     const chatType = isGroup ? 2 : friend?.chatType ?? 1
-    const canStartRoaming = false
 
     return (
       <div
@@ -406,23 +369,6 @@ function SessionListComponent({
                   导出
                 </button>
               </div>
-            ) : friend && canStartRoaming ? (
-              <div className="flex items-center bg-white dark:bg-neutral-900 border border-black/5 dark:border-white/10 shadow-[0_1px_2px_rgba(0,0,0,0.04)] rounded-full overflow-hidden hover:border-black/10 transition-all">
-                <button
-                  className="inline-flex items-center justify-center h-7 pl-3 pr-2 text-[12px] font-medium text-neutral-700 dark:text-neutral-200 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-50 dark:hover:bg-white/5 transition-colors border-r border-neutral-200/80 dark:border-white/10"
-                  onClick={(e: React.MouseEvent) => {
-                    e.stopPropagation()
-                    onOpenTaskWizard?.({
-                      chatType: 1,
-                      peerUid: item.id,
-                      peerUin: String(friend.uin || ""),
-                      sessionName: item.name,
-                    })
-                  }}
-                >
-                  导出
-                </button>
-              </div>
             ) : (
               <button
                 className="inline-flex items-center justify-center h-7 px-3 text-[12px] font-medium text-neutral-700 dark:text-neutral-200 bg-white dark:bg-neutral-900 border border-black/5 dark:border-white/10 shadow-[0_1px_2px_rgba(0,0,0,0.04)] hover:border-black/10 hover:bg-neutral-50 dark:hover:bg-white/5 hover:text-neutral-900 dark:hover:text-white rounded-full transition-all"
@@ -445,7 +391,7 @@ function SessionListComponent({
         )}
       </div>
     )
-  }, [batchMode, selectedItems, avatarExportLoading, onToggleItem, onPreviewChat, onOpenTaskWizard, onExportGroupAvatars, onOpenEssenceModal, onOpenGroupFilesModal, handleRowClick])
+  }, [batchMode, selectedItems, onToggleItem, onPreviewChat, onOpenTaskWizard, handleRowClick])
 
   return (
     <div className="space-y-0">
@@ -478,9 +424,11 @@ function SessionListComponent({
             value={type}
             onChange={(v) => setType(v as SessionType)}
             options={[
-              { value: "all", label: `全部 (${groupCount + friendCount})` },
+              { value: "all", label: `全部 (${groupCount + friendCount + officialCount + otherCount})` },
               { value: "group", label: `群组 (${groupCount})` },
               { value: "friend", label: `好友 (${friendCount})` },
+              { value: "official", label: `公众号 / 服务号 (${officialCount})` },
+              { value: "other", label: `其他会话 (${otherCount})` },
             ]}
           />
 
@@ -601,7 +549,7 @@ function SessionListComponent({
                     onClick={() => {
                       const ids = new Set<string>()
                       filteredItems.forEach((item) => {
-                        if (item.type === 'friend') ids.add(`friend_${item.id}`)
+                        if ((item.category || item.type) === 'friend') ids.add(`friend_${item.id}`)
                       })
                       onSelectMany ? onSelectMany(ids, 'add') : onSelectAll?.(ids)
                     }}

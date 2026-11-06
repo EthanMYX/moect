@@ -18,6 +18,7 @@ import hashlib
 import os
 import re
 import sqlite3
+from pathlib import Path
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from decimal import Decimal,InvalidOperation
@@ -269,9 +270,13 @@ class Wx4Data:
         self.me: dict = {}
         self.msg_dbs: list[sqlite3.Connection] = []
         self.media_dbs: list[sqlite3.Connection] = []
-        self._scan_dbs()
-        self._load_contacts()
-        self._load_rooms()
+        try:
+            self._scan_dbs()
+            self._load_contacts()
+            self._load_rooms()
+        except BaseException:
+            self.close()
+            raise
 
     # -- 库发现与连接 ------------------------------------------------------
     def _scan_dbs(self):
@@ -304,14 +309,15 @@ class Wx4Data:
         con = None
         if os.path.exists(path):
             try:
-                con = sqlite3.connect("file:%s?mode=ro" % path.replace("\\", "/"),
-                                      uri=True)
+                con = sqlite3.connect(Path(path).resolve().as_uri() + '?mode=ro', uri=True)
                 con.text_factory = sqlite_text
                 con.row_factory = sqlite3.Row
                 self._tables[id(con)] = {
                     r[0] for r in con.execute(
                         "select name from sqlite_master where type='table'")}
             except sqlite3.Error:
+                if con is not None:
+                    con.close()
                 con = None
         self._conns[rel] = con
         return con
@@ -341,6 +347,9 @@ class Wx4Data:
                 except sqlite3.Error:
                     pass
         self._conns.clear()
+        self._tables.clear()
+        self.msg_dbs.clear()
+        self.media_dbs.clear()
 
     # -- 联系人 ------------------------------------------------------------
     def _contact_con(self):
@@ -429,15 +438,28 @@ class Wx4Data:
         return n
 
     # -- 会话 --------------------------------------------------------------
+    def session_category(self, username):
+        if username.endswith('@chatroom'):
+            return 'group'
+        contact = self.contacts.get(username) or {}
+        try:
+            verified = int(contact.get('verify_flag') or contact.get('verifyflag') or 0)
+        except (ValueError, TypeError):
+            verified = 0
+        if username.startswith('gh_') or verified & 8:
+            return 'official'
+        if username.startswith('local-msg:') or username in {'filehelper', 'fmessage', 'medianote', 'newsapp', 'notification_messages', 'weixin', 'qqmail', 'tmessage'}:
+            return 'other'
+        return 'friend'
+
     def sessions(self) -> list[dict]:
         rel = self._db_rel("session")
         con = self._open(rel) if rel else None
-        if con is None or "SessionTable" not in self.tables_of(con):
-            return []
-        cols = {r[1] for r in con.execute("pragma table_info(SessionTable)")}
-        order = "sort_timestamp" if "sort_timestamp" in cols else "last_timestamp"
         out = []
-        for r in con.execute("select * from SessionTable order by %s desc" % order):
+        rows = []
+        if con is not None and "SessionTable" in self.tables_of(con):
+            rows = con.execute("select * from SessionTable")
+        for r in rows:
             d = dict(r)
             username = d.get("username") or ""
             if not username:
@@ -454,12 +476,59 @@ class Wx4Data:
                 "last_sender": d.get("last_msg_sender") or "",
                 "last_type": d.get("last_msg_type") or 0,
             })
+        out.extend(self._retained_sessions({row['username'] for row in out}))
         out.sort(key=lambda x: x["sort_time"], reverse=True)
         return out
+
+    def _retained_sessions(self, existing):
+        """Discover retained message tables independently of the current friend list."""
+        candidates = {name for name in self.contacts if not name.startswith('#id:')}
+        candidates.update(existing)
+        shards = {}
+        for con in self.msg_dbs:
+            names = self._name2id(con)
+            candidates.update(name for name in names.values() if isinstance(name, str) and name)
+            for table in self.tables_of(con):
+                if re.fullmatch(r'Msg_[0-9a-f]{32}', table):
+                    shards.setdefault(table, []).append((con, names))
+        identities = {self.msg_table_for(name): name for name in candidates}
+        result = []
+        for table, databases in sorted(shards.items()):
+            username = identities.get(table, 'local-msg:' + table[4:])
+            if username in existing:
+                continue
+            latest = None
+            sender = ''
+            for con, names in databases:
+                cols = {row[1] for row in con.execute('PRAGMA table_info("' + table + '")')}
+                if not {'create_time', 'message_content'} <= cols:
+                    continue
+                fields = ('create_time', 'local_type', 'message_content', 'compress_content', 'real_sender_id')
+                select = ','.join('"' + field + '"' if field in cols else 'NULL AS "' + field + '"' for field in fields)
+                order = 'create_time DESC' + (', local_id DESC' if 'local_id' in cols else '')
+                row = con.execute('SELECT ' + select + ' FROM "' + table + '" ORDER BY ' + order + ' LIMIT 1').fetchone()
+                if row is not None and (latest is None or (row['create_time'] or 0) > (latest['create_time'] or 0)):
+                    latest = row
+                    sender = names.get(row['real_sender_id'], '')
+            if latest is None:
+                continue
+            timestamp = latest['create_time'] or 0
+            kind = normalize_local_type(latest['local_type'])
+            content = decode_content(latest['message_content'], latest['compress_content'])
+            summary = self._describe({'type': kind, 'raw_type': latest['local_type'], 'content': content})['text']
+            display = self.session_display(username)
+            if username.startswith('local-msg:'):
+                display = '本地会话 · ' + table[4:12]
+            result.append(dict(username=username, display=display, avatar_url=self.avatar_of(username),
+                               unread=0, summary=summary[:120], last_time=timestamp, sort_time=timestamp,
+                               is_group=username.endswith('@chatroom'), last_sender=sender, last_type=kind))
+        return result
 
     # -- 消息 --------------------------------------------------------------
     @staticmethod
     def msg_table_for(username: str) -> str:
+        if re.fullmatch(r'local-msg:[0-9a-f]{32}', username):
+            return 'Msg_' + username[10:]
         return "Msg_" + hashlib.md5(username.encode("utf-8")).hexdigest()
 
     @staticmethod
@@ -510,6 +579,10 @@ class Wx4Data:
         mtype = normalize_local_type(raw_type)
         content = decode_content(r["message_content"], r["compress_content"])
         sender = id2name.get(r["real_sender_id"], "")
+        try:
+            time_str = datetime.fromtimestamp(r['create_time']).strftime('%Y-%m-%d %H:%M:%S') if r['create_time'] else ''
+        except (ValueError, OverflowError, OSError, TypeError):
+            time_str = ''
         # A group wire body begins with the sender's actual username, which
         # may be a legacy custom ID rather than wxid_*. Strip only a verified
         # identity; ordinary/private text such as "Note:\n..." must survive.
@@ -534,10 +607,9 @@ class Wx4Data:
             "raw_type": raw_type,
             "type_name": TYPE_NAMES.get(mtype, "其他(%s)" % mtype),
             "create_time": r["create_time"] or 0,
-            "time_str": (datetime.fromtimestamp(r["create_time"]).strftime(
-                "%Y-%m-%d %H:%M:%S") if r["create_time"] else ""),
+            "time_str": time_str,
             "sender_wxid": sender,
-            "sender": self.name_of(sender) if sender else "系统",
+            "sender": self.name_of(sender) if sender else ("系统" if mtype in (10000, 10002) else "未知发送者"),
             "avatar_url": self.avatar_of(sender),
             "is_sender": bool(sender) and sender == self.wxid,
             "content": content,
@@ -619,17 +691,29 @@ class Wx4Data:
         content = msg["content"]
         root = _xml(content)
         if root is None:
-            out["kind"] = "other"
-            out["text"] = "[应用消息]"
+            plain = bool(content.strip()) and not content.lstrip().startswith('<')
+            out["kind"] = "text" if plain else "other"
+            out["text"] = content if plain else "[应用消息]"
             return out
-        sub = _txt(root, "type")
+        appmsg = root if root.tag == 'appmsg' else _find(root, 'appmsg')
+        if appmsg is not None:
+            root = appmsg
+        # Descendant <type>/<url> nodes can belong to a quoted message.
+        # Only the outer appmsg determines this message's presentation.
+        sub = root.findtext('type', '')
+        raw_sub = (int(msg.get('raw_type') or 0) >> 32) & 0xffffffff
         try:
             sub_i = int(sub)
         except (TypeError, ValueError):
-            sub_i = (int(msg.get('raw_type') or 0)>>32)&0xffffffff
-        title = _txt(root, "title")
-        desc = _txt(root, "des")
-        url = _txt(root, "url")
+            sub_i = raw_sub
+        if root.find('refermsg') is not None and (not sub or raw_sub == 57):
+            sub_i = 57
+        title = root.findtext('title', '')
+        desc = root.findtext('des', '')
+        url = root.findtext('url', '')
+        if sub_i == 1:
+            out.update(kind='text', text=title or desc or content, extra={})
+            return out
         kind = APPMSG_SUBTYPE.get(sub_i, "应用消息(%s)" % sub)
         out["extra"].update({"appmsg_type": sub_i, "title": title, "url": url,
                             'description': desc, 'thumbnail_url': _txt(root, 'thumburl'),
@@ -769,6 +853,7 @@ class Wx4Data:
     # -- 语音 --------------------------------------------------------------
     def voice_blob(self, session: str, server_id: int):
         """按 server_id 从 media_*.db 取 SILK 语音数据。"""
+        mapped = False
         for con in self.media_dbs:
             if "VoiceInfo" not in self.tables_of(con):
                 continue
@@ -779,6 +864,7 @@ class Wx4Data:
                 continue
             if not r:
                 continue
+            mapped = True
             try:
                 row = con.execute(
                     "select voice_data from VoiceInfo where chat_name_id=? and svr_id=? "
@@ -787,6 +873,26 @@ class Wx4Data:
                 continue
             if row and row[0]:
                 return bytes(row[0])
+        # A removed contact can lose its Name2Id entry while the same-account
+        # voice blob survives. Use its exact positive server ID only when all
+        # matching blobs agree, so ambiguous cache rows cannot attach a wrong voice.
+        if not mapped and str(server_id).isdigit() and int(server_id) > 0:
+            found = None
+            for con in self.media_dbs:
+                if 'VoiceInfo' not in self.tables_of(con):
+                    continue
+                try:
+                    rows = con.execute('SELECT DISTINCT voice_data FROM VoiceInfo WHERE svr_id=? AND length(voice_data)>0 LIMIT 2', (server_id,))
+                    for row in rows:
+                        if not isinstance(row[0], (bytes, bytearray, memoryview)):
+                            return None
+                        blob = bytes(row[0])
+                        if found is not None and found != blob:
+                            return None
+                        found = blob
+                except sqlite3.Error:
+                    continue
+            return found
         return None
 
     # -- 附件目录 ----------------------------------------------------------
@@ -797,7 +903,7 @@ class Wx4Data:
         return os.path.join(self.account_dir(), "msg")
 
     def attach_dir(self, session: str) -> str | None:
-        h = hashlib.md5(session.encode("utf-8")).hexdigest()
+        h = self.msg_table_for(session)[4:]
         p = os.path.join(self.msg_dir(), "attach", h)
         return p if os.path.isdir(p) else None
 

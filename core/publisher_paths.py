@@ -2,11 +2,11 @@
 import json
 import os
 import shutil
-import stat
 import sys
 from pathlib import Path
 
 from Cryptodome.PublicKey import ECC
+from .paths import is_link
 
 
 def physical_path(path):
@@ -69,11 +69,6 @@ def matches_key(path,public_key):
         key=ECC.import_key(Path(path).read_text(encoding='utf-8-sig'));public=ECC.import_key(public_key)
         return key.has_private() and not public.has_private() and key.curve==public.curve=='Ed25519' and key.public_key().export_key(format='DER')==public.export_key(format='DER')
     except (OSError,ValueError,TypeError,IndexError):return False
-
-
-def is_link(path):
-    try:return path.is_symlink() or bool(getattr(path.lstat(),'st_file_attributes',0)&getattr(stat,'FILE_ATTRIBUTE_REPARSE_POINT',0))
-    except OSError:return True
 
 
 def migrate_author_data(destination,candidates,public_key):

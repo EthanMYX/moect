@@ -14,10 +14,15 @@ class Archive:
     def __init__(self, library):
         self.data = Wx4Data(library['root'], library.get('wxid', ''),
                             account_dir=library.get('account_dir'))
-        for con in self.data._conns.values():
-            if con:
-                con.execute('PRAGMA query_only=ON')
-        self.avatars = AvatarStore(self.data, Path(library['root']).parent/'avatar-cache')
+        try:
+            self.data.cache_root = library.get('storage_root')
+            for con in self.data._conns.values():
+                if con:
+                    con.execute('PRAGMA query_only=ON')
+            self.avatars = AvatarStore(self.data, Path(library['root']).parent/'avatar-cache')
+        except BaseException:
+            self.data.close()
+            raise
 
     def profile(self):
         me=self.data.me
@@ -31,6 +36,7 @@ class Archive:
     def sessions(self):
         rows = self.data.sessions()
         for row in rows:
+            row['category'] = self.data.session_category(row['username'])
             row['has_messages'] = self.data.has_messages(row['username'])
             row['avatar_url'] = self.avatars.ui(row['username'])
         return [r for r in rows if r['has_messages']]

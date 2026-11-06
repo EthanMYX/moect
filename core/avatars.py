@@ -1,7 +1,6 @@
 """Contact avatar lookup shared by the UI and portable exports."""
 import base64
 import hashlib
-import base64
 import urllib.request
 from pathlib import Path
 from urllib.parse import urlparse
@@ -18,9 +17,13 @@ def image_type(blob):
 
 
 def avatar_host(url):
-    p=urlparse(url);host=(p.hostname or '').lower()
-    return p.scheme in ('http','https') and not p.username and any(
-        host==d or host.endswith('.'+d) for d in ('qpic.cn','qlogo.cn','weixin.qq.com'))
+    if not isinstance(url,str):return False
+    try:
+        p=urlparse(url);host=(p.hostname or '').lower()
+        return p.scheme in ('http','https') and not p.username and p.port in (None,80,443) and any(
+            host==d or host.endswith('.'+d) for d in ('qpic.cn','qlogo.cn','weixin.qq.com'))
+    except ValueError:
+        return False
 
 
 class AvatarStore:
@@ -52,8 +55,12 @@ class AvatarStore:
         url=self.data.avatar_of(username)
         cached=self.cache/(hashlib.sha256(url.encode()).hexdigest()+'.img') if self.cache and url else None
         if not found and cached and cached.exists():
-            blob=cached.read_bytes()
-            if image_type(blob):found=blob
+            try:
+                if cached.stat().st_size<=2*1024*1024:
+                    blob=cached.read_bytes()
+                    if image_type(blob):found=blob
+            except OSError:
+                pass
         if not found and download and avatar_host(url):
             try:
                 class Redirect(urllib.request.HTTPRedirectHandler):

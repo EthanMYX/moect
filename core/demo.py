@@ -1,5 +1,5 @@
 """Fictional, self-contained demo. Never opens WeChat data."""
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 
 SESSIONS = [
     ('demo_design@chatroom', '周末出走计划', '群聊', '照片收到了，这次的日落真的很美。', '山'),

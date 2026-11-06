@@ -75,7 +75,7 @@ class StickerCache:
         self.data=data;self.codec=codec;self.cancel=cancel;self.status=status
         self.account=Path(data.account_dir()).resolve();self.base=self.account/'business/emoticon'
         token=hashlib.sha256((str(self.account)+'\0'+data.wxid).encode()).hexdigest()
-        self.key_path=app_data_root()/'media-cache'/token/'emoticon-key.bin'
+        self.key_path=Path(getattr(data,'cache_root',None) or app_data_root())/'media-cache'/token/'emoticon-key.bin'
         self.key=None;self.scanned=False;self.packages=OrderedDict()
         try:
             value=self.key_path.read_bytes()

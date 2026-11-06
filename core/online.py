@@ -253,7 +253,7 @@ class OnlineChannel:
 
     def prepare_apply(self):
         with self.service.lock:
-            if any(t['status'] in ('queued','running') for t in self.service.config['tasks']):raise ValueError('请等待当前连接、整理或导出任务结束后再更新。')
+            if getattr(self.service, '_cache_readers', 0) or any(t['status'] in ('queued','running') for t in self.service.config['tasks']):raise ValueError('请等待当前任务结束、预览加载完成后再更新。')
         with self.lock:
             if self.install_mode()=='source':raise ValueError('当前从源码运行；安装版或便携版支持更新并重启。')
             if self.apply_pending:raise ValueError('更新已准备启动，请稍候。')
@@ -264,7 +264,7 @@ class OnlineChannel:
             self._accept(envelope)
             require_current_release(expected_release,latest.get('release'))
         with self.service.lock:
-            if any(t['status'] in ('queued','running') for t in self.service.config['tasks']):raise ValueError('请等待当前连接、整理或导出任务结束后再更新。')
+            if getattr(self.service, '_cache_readers', 0) or any(t['status'] in ('queued','running') for t in self.service.config['tasks']):raise ValueError('请等待当前任务结束、预览加载完成后再更新。')
             with self.lock:
                 if self.install_mode()=='source':raise ValueError('当前从源码运行；安装版或便携版支持更新并重启。')
                 if self.apply_pending:raise ValueError('更新已准备启动，请稍候。')

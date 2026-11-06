@@ -1,4 +1,4 @@
-[![Moect 1.2.0：会话、朋友圈与表情包，本地珍藏](docs/images/banner.png?v=1.2.0)](https://github.com/mofan6/Moect/releases/latest)
+[![Moect 会话、朋友圈与表情包，本地珍藏](docs/images/banner.png?v=1.2.0)](https://github.com/mofan6/Moect/releases/latest)
 
 **Moect 是一个在 Windows 上读取、整理与导出微信聊天记录的桌面工具。**
 
@@ -12,6 +12,14 @@
 [![下载量](https://img.shields.io/github/downloads/mofan6/Moect/total?color=8771cf&labelColor=282333&style=flat-square)](https://github.com/mofan6/Moect/releases)
 [![系统](https://img.shields.io/badge/Windows-10%20%2F%2011%20x64-8771cf?labelColor=282333&style=flat-square)](docs/usage.md)
 [![许可证](https://img.shields.io/badge/license-GPL--3.0-8771cf?labelColor=282333&style=flat-square)](LICENSE)
+
+## 1.2.5 更新
+
+- 会话分类与不限数量的批量排队导出，支持已删除好友的本地保留记录。
+- 新增 Excel、可选 ZIP 压缩与 AES-256 加密，以及 HTML 打印和 PDF 保存。
+- 升级图片预览、缓存管理、空间统计和连接诊断，加入圆形扩散亮暗切换与统一的按钮悬浮动效。
+
+[查看完整更新说明](docs/release-1.2.5.md)
 
 ## 特性
 
@@ -29,7 +37,9 @@
 | 离线阅读 | HTML 对话气泡、头像、图片、GIF、音视频与分享卡片 |
 | 找到某段记录 | 按发送者或正文搜索，按北京时间选择起止时间 |
 | 保留转发和引用 | 引用回复、可展开的合并转发、独立转发记录页 |
-| 整理和分析 | HTML、JSON、JSONL、TXT、CSV、Markdown 六种格式 |
+| 整理和分析 | HTML、JSON、JSONL、TXT、CSV、Markdown、Excel 七种格式 |
+| 保存压缩归档 | 可选 ZIP 与 AES-256 加密，选择和密码可记忆 |
+| 管理缓存 | 自选缓存位置、查看占用和清理过期快照 |
 | 管理导出任务 | 分类查看会话、朋友圈和表情包任务，多选删除或清空记录 |
 | 跟随个人偏好 | 八种主题色、窗口位置与尺寸、会话排序自动记忆，HTML 随主题导出 |
 | 接收软件消息 | Markdown 公告、已读记忆，以及软件内检查、下载和安装新版本 |
@@ -44,7 +54,7 @@
 
 1. 下载 [Moect 一键安装包](https://github.com/mofan6/Moect/releases/latest)，双击后选择安装位置及是否创建桌面快捷方式，再点击“安装”。开始菜单入口会自动创建；缺少 WebView2 时会自动准备运行环境，此时需要联网。
 2. 打开并登录电脑微信，然后启动 Moect，点击“连接微信”。也可以打开已有解密备份，或先体验虚构的演示数据。
-3. 点击会话查看记录，选择导出格式与时间范围，创建任务。
+3. 点击会话查看记录，选择导出格式、时间范围及可选的压缩加密设置，创建任务。
 4. 导出完成后，在任务页面直接打开文件。HTML 打开即进入对话，批量导出可在顶部切换会话，顶栏可收起或展开。短消息气泡随内容收紧，长链接自动换行。
 
 完整保留导出文件夹里的 HTML、消息分片和资源目录，才能在离线电脑上继续查看媒体。

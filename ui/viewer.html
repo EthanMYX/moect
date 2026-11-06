@@ -10,9 +10,12 @@ header{padding:0 max(24px,calc((100% - 850px)/2))}#header-panel{display:grid;gri
 @media(prefers-reduced-motion:reduce){#header-panel,#toggle-header svg{transition:none}}
 .row.system{justify-content:center;margin:14px 0;padding:0 12px}.system-text{font-size:12px;line-height:1.6;text-align:center;color:#978aab;white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%}
 #archive-pagination{position:fixed;left:0;right:0;bottom:0;z-index:2;padding:10px 14px 12px;background:#fcfafff2;border-top:1px solid #e4dcef}#pagination,#page-buttons{display:flex;align-items:center;justify-content:center;gap:5px;flex-wrap:wrap}#archive-pagination button{margin:0;min-width:32px;height:32px;padding:4px 9px;border-radius:9px;font-size:13px}#archive-pagination button:hover:not(:disabled){border-color:#a48bd9;background:#f0eafa}#archive-pagination button[aria-current="page"]{background:#7056c4;border-color:#7056c4;color:white}#archive-pagination #page{font-size:11px;color:#897a99;margin-top:6px}[hidden]{display:none!important}html{scroll-padding-bottom:100px}body{min-height:100vh;padding-bottom:100px}#archive-pagination button:focus-visible{outline:2px solid #a48bd9;outline-offset:2px}@media(max-width:600px){#archive-pagination{padding:8px}#pagination,#page-buttons{gap:3px}#archive-pagination button{min-width:27px;padding:3px 6px;height:30px}}
+body{padding-bottom:150px}html{scroll-padding-bottom:150px}.pagination-controls{display:flex;justify-content:center;align-items:center;gap:14px;flex-wrap:wrap}.page-jump{display:flex;align-items:center;gap:6px;font-size:12px}.page-jump label{display:flex;align-items:center;gap:6px}.page-jump input{width:52px;height:32px;padding:4px 6px;text-align:center;appearance:textfield}.page-jump input::-webkit-inner-spin-button,.page-jump input::-webkit-outer-spin-button{appearance:none;margin:0}
 </style>
-<header><div id="header-panel"><div class="header-clip"><div id="header-content"><h1 id="title"></h1><div id="meta"></div><div class="filters"><label class="search">搜索消息或发送者<input id="search" type="search" placeholder="搜索这份归档"></label><moect-date-range id="date-range"></moect-date-range><input id="start" type="hidden"><input id="end" type="hidden"><button id="go">筛选</button><button id="reset">显示全部</button></div><div id="selection" aria-live="polite"></div></div></div></div><div class="header-toggle-row"><button id="toggle-header" type="button" aria-controls="header-panel" aria-expanded="true" title="收起顶栏"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 12 5-5 5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr-only">收起顶栏</span></button></div></header><main id="messages"></main><div id="notice" role="status"></div><footer id="archive-pagination"><nav id="pagination" aria-label="聊天记录分页"><button id="prev" aria-label="上一页">‹</button><button id="prev-group" hidden>上一列</button><span id="page-buttons"></span><button id="next-group" hidden>下一列</button><button id="next" aria-label="下一页">›</button></nav><div id="page" role="status"></div></footer>
+<header><div id="header-panel"><div class="header-clip"><div id="header-content"><h1 id="title"></h1><div id="meta"></div><div class="filters"><label class="search">搜索消息或发送者<input id="search" type="search" placeholder="搜索这份归档"></label><moect-date-range id="date-range"></moect-date-range><input id="start" type="hidden"><input id="end" type="hidden"><button id="go">筛选</button><button id="reset">显示全部</button><button id="print">打印 / 保存 PDF</button></div><div id="selection" aria-live="polite"></div></div></div></div><div class="header-toggle-row"><button id="toggle-header" type="button" aria-controls="header-panel" aria-expanded="true" title="收起顶栏"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 12 5-5 5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr-only">收起顶栏</span></button></div></header><main id="messages"></main><div id="notice" role="status"></div><footer id="archive-pagination"><div class="pagination-controls"><nav id="pagination" aria-label="聊天记录分页"><button id="prev" aria-label="上一页">‹</button><button id="prev-group" hidden>上一列</button><span id="page-buttons"></span><button id="next-group" hidden>下一列</button><button id="next" aria-label="下一页">›</button></nav><div id="page-jump-controls" class="page-jump" role="group" aria-label="跳转到指定页" hidden><label>跳至 <input id="page-jump" type="number" min="1" inputmode="numeric" aria-label="跳转页码"> 页</label><button id="jump-go">跳转</button></div></div><div id="page" role="status"></div></footer>
 <script>__DATE_RANGE_PICKER__</script>
+<script>__ARCHIVE_PRINT__</script>
+<script>__ARCHIVE_MEDIA__</script>
 <script>
 const manifest=__MANIFEST__;
 let page=0,pageGroup=0,reading=false,records=[],generation=0,total=0,chunkQueue=Promise.resolve(),selection=null;
@@ -42,6 +45,8 @@ function renderResources(parent,message,filter=()=>true){
  const visibleImage=(message.resources||[]).some(r=>r.kind==='image'&&r.status==='available'&&localPath(r.path));
  for(const r of message.resources||[]){
   if(!filter(r)||!localPath(r.path))continue;
+  const preferredImage=(message.resources||[]).find(item=>item.kind==='image'&&item.role==='main'&&item.status==='available'&&localPath(item.path))||(message.resources||[]).find(item=>item.kind==='image'&&item.status==='available'&&localPath(item.path));
+  if(['image','emoji'].includes(message.kind)&&r.kind==='image'&&r.status==='available'&&r!==preferredImage)continue;
   if(visibleImage&&r.kind==='original'&&r.status==='available'&&r.role==='original')continue;
   const block=document.createElement('div');block.className='resource';
   const playable=r.status==='available'&&['image','video','audio'].includes(r.kind)&&!r.path.endsWith('.silk');
@@ -94,6 +99,7 @@ function renderTransfer(parent,m){const info=m.extra?.transfer||{},state=['pendi
 function renderCard(parent,m){
  if(m.kind==='transfer')return renderTransfer(parent,m);
  const extra=m.extra||{};if(!['link','miniprogram','appmsg','file','location'].includes(m.kind))return false;
+ if(m.kind==='appmsg'&&([1,57].includes(Number(extra.appmsg_type))||!link(extra.url)))return false;
  if(m.kind!=='file'&&m.kind!=='location'&&!(extra.title||extra.url||extra.miniprogram))return false;
  const file=m.kind==='file',asset=file?(m.resources||[]).find(r=>r.kind==='file'&&r.status==='available'&&localPath(r.path)):null;
  const href=file?(asset?localPath(asset.path):''):m.kind==='location'?locationLink(extra):link(extra.url),card=element(href?'a':'div','wx-card');
@@ -116,14 +122,47 @@ function renderPagination(align=true){
  const model=paginationModel(total,page,align?null:pageGroup);pageGroup=model.start;
  const box=$('#page-buttons');box.replaceChildren();
  for(const number of model.numbers){const button=element('button','',number);button.type='button';button.disabled=reading;button.setAttribute('aria-label','第 '+number+' 页');if(number===page+1)button.setAttribute('aria-current','page');button.onclick=()=>goPage(number-1);box.append(button)}
+ $('#page-jump-controls').hidden=model.pages<20;
+ $('#page-jump').value=String(total?page+1:1);$('#page-jump').max=String(Math.max(1,model.pages));$('#page-jump').disabled=reading||!total;$('#jump-go').disabled=reading||!total;
  $('#page').textContent='第 '+(total?page+1:0)+' / '+model.pages+' 页';
  $('#prev').disabled=reading||!page;$('#next').disabled=reading||page+1>=model.pages;
  for(const [id,available] of [['#prev-group',model.previousGroup],['#next-group',model.nextGroup]]){$(id).hidden=model.pages<=10;$(id).disabled=reading||!available;}
 }
 async function goPage(index){if(reading)return;page=paginationModel(total,index).selected;const expected=generation+1;await query(false);if(generation===expected)scrollTo(0,0)}
+function messageRow(m) {
+ const system=isSystemMessage(m),row=element('div','row'+(system?' system':m.is_sender?' me':''));
+ row.dataset.messageId=String(m.server_id||'');
+ if(system){const notice=element('div','system-text',m.text||'');notice.title=m.time_str||'';row.append(notice);return row}
+ const avatar=element('div','avatar',(m.sender||'?').slice(0,1));
+ if(localPath(m.avatar)){
+  const image=element('img');image.src=m.avatar;image.alt=m.sender;image.loading='lazy';
+  image.onerror=()=>{image.remove();avatar.textContent=(m.sender||'?').slice(0,1)};avatar.replaceChildren(image);
+ }
+ const body=element('div','body'),by=element('div','by',m.sender+' · '+m.time_str),bubble=element('div','bubble');
+ renderContent(bubble,m);body.append(by,bubble);row.append(avatar,body);return row;
+}
+async function printMessages() {
+ if(reading||MoectPrint.busy)return;
+ const notice=$('#notice'),previous=notice.textContent;
+ try{
+  const filter=filters();notice.textContent='正在准备当前筛选范围的全部记录…';
+  await MoectPrint.print({title:manifest.name+' · 聊天记录',
+   description:[$('#meta').textContent,$('#start').value||'不限开始时间',$('#end').value||'不限结束时间',$('#search').value.trim()].filter(Boolean).join(' · '),
+   render:async root=>{
+    let count=0;
+    for(let i=0;i<manifest.chunks.length;i++){
+     if(outside(manifest.chunks[i],filter))continue;
+     for(const message of await load(i)){if(matches(message,filter)){root.append(messageRow(message));count++}}
+     if(i%5===0)await new Promise(resolve=>setTimeout(resolve,0));
+    }
+    return count;
+   }});
+  notice.textContent=previous;
+ }catch(error){notice.textContent=error.message}
+}
 function draw(){
  const box=$('#messages');box.replaceChildren();
- for(const m of records){const system=isSystemMessage(m),row=element('div','row'+(system?' system':m.is_sender?' me':''));row.dataset.messageId=String(m.server_id||'');if(system){const notice=element('div','system-text',m.text||'');notice.title=m.time_str||'';row.append(notice);box.append(row);continue}const a=element('div','avatar',(m.sender||'?').slice(0,1));if(localPath(m.avatar)){const img=element('img');img.src=m.avatar;img.alt=m.sender;img.loading='lazy';img.onerror=()=>{img.remove();a.textContent=(m.sender||'?').slice(0,1)};a.replaceChildren(img)}const body=element('div','body'),by=element('div','by',m.sender+' · '+m.time_str),bubble=element('div','bubble');renderContent(bubble,m);body.append(by,bubble);row.append(a,body);box.append(row)}
+ for(const m of records)box.append(messageRow(m));
  renderPagination();$('#selection').textContent='匹配 '+total+' 条 · 共 '+manifest.count+' 条';$('#notice').textContent=records.length?'':'没有匹配的消息'
 }
 function searchable(m){return [m.text,m.sender,m.extra?.title,m.extra?.description,m.extra?.url,m.quote?.text,m.quote?.sender,m.forward?.title,...(m.forward?.preview||[]).map(p=>p.sender+' '+p.text),...(m.resources||[]).map(r=>r.name)].filter(Boolean).join(' ').toLocaleLowerCase()}
@@ -157,5 +196,7 @@ async function query(reset=true){
 }
 async function jump(target){const id=++generation;let position=0;$('#notice').textContent='正在定位原消息…';try{for(let i=0;i<manifest.chunks.length;i++){const batch=await load(i);if(id!==generation)return;for(const m of batch){if(String(m.server_id)===target){$('#search').value='';$('#start').value='';$('#end').value='';$('#date-range').setAttribute('start','');$('#date-range').setAttribute('end','');page=Math.floor(position/size);await query(false);const row=[...document.querySelectorAll('.row')].find(r=>r.dataset.messageId===target);if(row){row.scrollIntoView({block:'center',behavior:'smooth'});row.classList.add('focused')}return}position++}}$('#notice').textContent='原消息不在本次导出范围，已展示可用的引用内容。'}catch(e){$('#notice').textContent=e.message}}
 $('#date-range').addEventListener('range-change',e=>{$('#start').value=e.detail.start;$('#end').value=e.detail.end;query()});
-$('#go').onclick=()=>query();for(const input of ['#search','#start','#end'])$(input).onkeydown=e=>{if(e.key==='Enter')query()};$('#reset').onclick=()=>{$('#search').value='';$('#start').value='';$('#end').value='';$('#date-range').setAttribute('start','');$('#date-range').setAttribute('end','');query()};$('#prev').onclick=()=>goPage(page-1);$('#next').onclick=()=>goPage(page+1);$('#prev-group').onclick=()=>{pageGroup-=10;renderPagination(false)};$('#next-group').onclick=()=>{pageGroup+=10;renderPagination(false)};query();
+const jumpPage=()=>{const value=Number($('#page-jump').value);if(!Number.isInteger(value)||value<1||value>Math.ceil(total/size)){$('#notice').textContent='请输入有效页码';return}goPage(value-1)};$('#jump-go').onclick=jumpPage;$('#page-jump').onkeydown=event=>{if(event.key==='Enter')jumpPage()};
+$('#print').onclick=printMessages;$('#go').onclick=()=>query();for(const input of ['#search','#start','#end'])$(input).onkeydown=e=>{if(e.key==='Enter')query()};$('#reset').onclick=()=>{$('#search').value='';$('#start').value='';$('#end').value='';$('#date-range').setAttribute('start','');$('#date-range').setAttribute('end','');query()};$('#prev').onclick=()=>goPage(page-1);$('#next').onclick=()=>goPage(page+1);$('#prev-group').onclick=()=>{pageGroup-=10;renderPagination(false)};$('#next-group').onclick=()=>{pageGroup+=10;renderPagination(false)};query();
+MoectMedia.mount(document.querySelector('#messages'));
 </script></html>

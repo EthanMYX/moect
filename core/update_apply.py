@@ -4,7 +4,7 @@ import os
 import shutil
 import stat
 import zipfile
-from pathlib import Path,PurePosixPath
+from pathlib import PurePosixPath
 
 
 def relative_name(value):
@@ -78,7 +78,12 @@ def replace_portable(target,stage,recovery):
     try:
         for name in sorted(new_names):
             source=inside(stage,name);destination=inside(target,name);destination.parent.mkdir(parents=True,exist_ok=True)
-            temporary=destination.with_name(destination.name+'.moect-new');shutil.copy2(source,temporary);os.replace(temporary,destination)
+            temporary=destination.with_name(destination.name+'.moect-new')
+            try:
+                shutil.copy2(source,temporary)
+                os.replace(temporary,destination)
+            finally:
+                temporary.unlink(missing_ok=True)
         for name in old_names-new_names:
             destination=inside(target,name)
             if destination.is_file():destination.unlink()

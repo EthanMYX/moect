@@ -270,7 +270,6 @@ def export_all(data: Wx4Data, out_dir: str, fmt: str = "html",
         path = os.path.join(out_dir, fname)
         try:
             if media:
-                sess_media = os.path.join(media_root, display)
                 _collect_media(data, s, msgs, media_root, aes_key=aes_key,
                                copy_dat=copy_dat, progress=progress)
                 # 采集媒体会往 msgs 里写 extra，需要重新取一遍正文

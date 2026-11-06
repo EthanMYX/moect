@@ -91,6 +91,7 @@ export interface GroupsResponse {
 }
 
 export interface Friend {
+  sessionCategory?: 'friend' | 'official' | 'other'
   uid: string
   uin: number
   nick: string

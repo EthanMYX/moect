@@ -1,13 +1,13 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
+import {LocalMediaPreview} from "@/src/LocalMediaPreview"
 import { motion, AnimatePresence } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Loader } from "@/components/ui/loader"
 import {
-  MessageSquare,
   Calendar as CalendarIcon,
   Search,
   Users,
@@ -388,6 +388,7 @@ export function MessagePreviewModal({ open, onClose, chat, onExport }: MessagePr
     if (!open) return
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        if (document.querySelector('dialog[open]')) return
         e.stopPropagation()
         e.preventDefault()
         onClose()
@@ -543,6 +544,8 @@ export function MessagePreviewModal({ open, onClose, chat, onExport }: MessagePr
                 {messages.map((msg, idx) => {
                   if(msg.isSystem)return <div key={`${msg.msgId}-${idx}`} title={format(new Date(msg.msgTime*1000),'yyyy-MM-dd HH:mm:ss')} className="px-6 py-2 text-center text-xs text-muted-foreground/70 whitespace-pre-wrap [overflow-wrap:anywhere]">{formatMessageElements(msg.elements)}</div>
                   const isFromSelf = msg.sendType === 1
+                  const title = typeof msg.richContent?.title === 'string' ? msg.richContent.title.trim() : ''
+                  const bodyText = msg.elements.map(element => element.textElement?.content || '').join('').trim()
                   return (
                     <div
                       key={`${msg.msgId}-${idx}`}
@@ -566,12 +569,13 @@ export function MessagePreviewModal({ open, onClose, chat, onExport }: MessagePr
                             {format(new Date(msg.msgTime * 1000), 'MM-dd HH:mm')}
                           </span>
                         </div>
-                        {msg.richContent?.forward?<ForwardPreview record={msg.richContent.forward}/>:<p className="text-sm text-foreground/80 [overflow-wrap:anywhere] leading-relaxed">
-                          {formatMessageElements(msg.elements)}
-                          {msg.richContent?.title&&<span className="block mt-1 font-medium">{msg.richContent.title}</span>}
+                        {msg.richContent?.forward?<ForwardPreview record={msg.richContent.forward}/>:<div className="text-sm text-foreground/80 [overflow-wrap:anywhere] leading-relaxed">
+                          {msg.richContent?.media&&<LocalMediaPreview hint={msg.richContent.media}/>}
+                          {(!msg.richContent?.media||!/^\[(?:图片|动画表情|语音.*)\]$/.test(msg.elements[0]?.textElement?.content||''))&&formatMessageElements(msg.elements)}
+                          {title&&title!==bodyText&&<span className="block mt-1 font-medium">{title}</span>}
                           {msg.richContent?.reply&&<span className="block mt-2 pl-3 border-l-2 border-primary/30 text-xs text-muted-foreground">{msg.richContent.reply.sender}：{msg.richContent.reply.text}</span>}
                           {msg.richContent?.miniprogram&&<span className="block text-xs text-muted-foreground">小程序 · {msg.richContent.source_name} · {msg.richContent.miniprogram.page_path}</span>}
-                        </p>}
+                        </div>}
                       </div>
                     </div>
                   )

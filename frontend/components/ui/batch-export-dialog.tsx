@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { call } from "@/src/native"
+import {ArchiveOptions,useArchivePreferences} from "@/src/ArchiveOptions"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,13 +10,14 @@ import { Progress } from "@/components/ui/progress"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
-import { CheckCircle2, XCircle, Users, User, FolderOpen, HelpCircle } from "lucide-react"
+import { CheckCircle2, XCircle, Users, User, FolderOpen, HelpCircle, ChevronDown } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 import { Loader } from "@/components/ui/loader"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { toggleSkipResourceType, type SkipDownloadResourceType } from "@/lib/skip-resource-types"
 import { EXPORT_OPTION_TOOLTIPS } from "@/lib/export-option-tooltips"
+import { toast } from "@/components/ui/toast"
 
 const PILL_INPUT =
   "h-[36px] px-3.5 rounded-full border-0 bg-black/[0.04] dark:bg-white/[0.06] text-[13px] outline-none placeholder:text-muted-foreground/70 focus:bg-black/[0.06] dark:focus:bg-white/[0.09] transition-colors"
@@ -47,7 +49,7 @@ interface BatchExportDialogProps {
 }
 
 export interface BatchExportConfig {
-  format: 'HTML' | 'TXT' | 'JSON' | 'CSV' | 'JSONL' | 'MD'
+  format: 'HTML' | 'TXT' | 'JSON' | 'CSV' | 'JSONL' | 'MD' | 'XLSX'
   timeRange: 'all' | 'recent' | 'custom'
   customStartDate?: string
   customEndDate?: string
@@ -57,6 +59,9 @@ export interface BatchExportConfig {
   skipDownloadResourceTypes?: SkipDownloadResourceType[]
   outputDir: string
   keywords: string
+  archiveZip: boolean
+  archiveEncrypt: boolean
+  archivePassword?: string
 }
 
 export interface BatchExportProgress {
@@ -78,7 +83,7 @@ function ExportSwitch({id,title,description,checked,disabled,onChange}:{id:strin
 
 export function BatchExportDialog({ open, onOpenChange, items, onExport }: BatchExportDialogProps) {
   const didInitRef = useRef(false)
-  const [format, setFormat] = useState<'HTML' | 'TXT' | 'JSON' | 'CSV' | 'JSONL' | 'MD'>('HTML')
+  const [format, setFormat] = useState<'HTML' | 'TXT' | 'JSON' | 'CSV' | 'JSONL' | 'MD' | 'XLSX'>('HTML')
   const [timeRange, setTimeRange] = useState<'all' | 'recent' | 'custom'>('all')
   const [customStartDate, setCustomStartDate] = useState('')
   const [customEndDate, setCustomEndDate] = useState('')
@@ -91,6 +96,8 @@ export function BatchExportDialog({ open, onOpenChange, items, onExport }: Batch
   const [skipDownloadResourceTypes, setSkipDownloadResourceTypes] = useState<SkipDownloadResourceType[] | undefined>(undefined)
   const [outputDir, setOutputDir] = useState('')
   const [keywords, setKeywords] = useState('')
+  const packaging=useArchivePreferences(open)
+  const {zip:archiveZip,encrypt:archiveEncrypt,password:archivePassword}=packaging
   // Issue #134: 友好文件名格式
   
   const [progress, setProgress] = useState<BatchExportProgress>({
@@ -155,6 +162,7 @@ export function BatchExportDialog({ open, onOpenChange, items, onExport }: Batch
   }, [timeRange, customStartDate, customEndDate])
 
   const handleExport = async () => {
+    try{await packaging.flush()}catch(error){setDateError((error as Error).message);return}
     if (timeRange === 'custom') {
       if (!customStartDate || !customEndDate) {
         setDateError('请选择开始和结束时间')
@@ -184,7 +192,7 @@ export function BatchExportDialog({ open, onOpenChange, items, onExport }: Batch
       customEndDate: timeRange === 'custom' ? customEndDate : undefined,
       includeSystemMessages, quickExport, includeAvatars,
       skipDownloadResourceTypes: skipDownloadResourceTypes || [],
-      outputDir, keywords,
+      outputDir, keywords, archiveZip, archiveEncrypt, archivePassword:archivePassword||undefined,
     }
 
     try {
@@ -204,9 +212,15 @@ export function BatchExportDialog({ open, onOpenChange, items, onExport }: Batch
     }
   }
 
-  const handleClose = () => {
+  const handleClose = async () => {
     if (!isExporting) {
-      onOpenChange(false)
+      try {
+        await packaging.savePassword()
+      } catch (error) {
+        toast.error('设置保存失败', {description:error instanceof Error ? error.message : '请检查数据目录的写入权限'})
+      } finally {
+        onOpenChange(false)
+      }
     }
   }
 
@@ -286,7 +300,7 @@ export function BatchExportDialog({ open, onOpenChange, items, onExport }: Batch
               <section>
                 <h2 className={SECTION_TITLE}>导出格式</h2>
                 <div className="inline-flex items-center flex-wrap gap-1 p-1 rounded-[20px] bg-black/[0.04] dark:bg-white/[0.06] w-fit max-w-full">
-                  {(["HTML", "JSON", "TXT", "CSV", "JSONL", "MD"] as const).map((fmt) => {
+                  {(["HTML", "JSON", "TXT", "CSV", "JSONL", "MD", "XLSX"] as const).map((fmt) => {
                     const active = format === fmt
                     return (
                       <button
@@ -373,14 +387,12 @@ export function BatchExportDialog({ open, onOpenChange, items, onExport }: Batch
                   ] as const).map(option=><ExportSwitch key={option.type} id={'skip-'+option.type} title={option.title} description={option.description} checked={quickExport || !!skipDownloadResourceTypes?.includes(option.type)} disabled={isExporting || quickExport} onChange={enabled=>setSkipDownloadResourceTypes(current=>toggleSkipResourceType(current,option.type,enabled))}/>)}
                   <ExportSwitch id="include-avatars" title="导出头像" description="将可用头像一起保存到归档中；关闭后使用姓名首字作为占位。" checked={includeAvatars && !quickExport} onChange={setIncludeAvatars} disabled={isExporting || quickExport}/>
                 </div>
-                <p className="text-[12px] text-muted-foreground leading-relaxed mt-3">以上设置同样作用于引用回复与合并转发中的资源。主动跳过的附件会单独标注，不会记作下载失败。</p>
               </section>
 
               {/* 高级选项 */}
               <section>
                 <h2 className={SECTION_TITLE}>高级选项</h2>
                 <div className="space-y-6">
-                <p className="text-[12px] text-muted-foreground leading-relaxed">按上方设置保存可用资源。HTML 可离线阅读；资源未取得或解密失败时会说明原因。</p>
                   <div className="space-y-2.5">
                     <label className="block text-[12px] font-medium text-muted-foreground pl-1">导出路径</label>
                     <div className="flex gap-2">
@@ -393,7 +405,13 @@ export function BatchExportDialog({ open, onOpenChange, items, onExport }: Batch
                     <label className="block text-[12px] font-medium text-muted-foreground pl-1">关键词过滤</label>
                     <Textarea placeholder="输入关键词或发送者，留空导出全部" value={keywords} onChange={(e) => setKeywords(e.target.value)} disabled={isExporting} rows={2} className={PILL_TEXTAREA + " w-full"} />
                   </div>
-
+                  <details className="group/archive-settings">
+                    <summary className="flex w-fit cursor-pointer list-none items-center gap-2 rounded-full bg-muted/60 px-4 py-2 text-[13px] font-medium hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden">
+                      更多设置
+                      <ChevronDown className="h-3.5 w-3.5 transition-transform group-open/archive-settings:rotate-180" />
+                    </summary>
+                    <div className="mt-4"><ArchiveOptions model={packaging} disabled={isExporting}/></div>
+                  </details>
                 </div>
               </section>
 

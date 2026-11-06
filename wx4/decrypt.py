@@ -15,6 +15,7 @@ import sqlite3
 import struct
 import tempfile
 import time
+from pathlib import Path
 
 from Cryptodome.Cipher import AES
 
@@ -82,51 +83,50 @@ def merge_wal(db_path: str, wal_path: str, enc_key: bytes, cancel=None) -> int:
     只应用「帧里的 salt 与文件头当前 salt 相同」的帧，避免 checkpoint 后的
     旧世代帧把新页覆盖掉。
     """
-    with open(wal_path, "rb") as f:
-        wal = f.read()
-    if len(wal) < WAL_HDR_SZ:
-        return 0
-    magic, ver, page_size = struct.unpack_from(">III", wal, 0)
-    if magic not in WAL_MAGIC:
-        raise DecryptError("WAL 文件头无效，请重试")
-    if page_size == 0:
-        page_size = PAGE_SZ
-    if page_size != PAGE_SZ:
-        # 4.x 一律 4096，其它尺寸不处理以免写坏文件
-        raise DecryptError("WAL 页大小不受支持")
-    salt1, salt2 = struct.unpack_from(">II", wal, 16)
+    # Locate the last committed frame without retaining the WAL or page copies.
+    with open(wal_path, "rb") as wal:
+        header = wal.read(WAL_HDR_SZ)
+        if len(header) < WAL_HDR_SZ:
+            return 0
+        magic, _version, page_size = struct.unpack_from(">III", header, 0)
+        if magic not in WAL_MAGIC:
+            raise DecryptError("WAL 文件头无效，请重试")
+        if page_size not in (0, PAGE_SZ):
+            raise DecryptError("WAL 页大小不受支持")
+        salts = struct.unpack_from(">II", header, 16)
+        size = os.fstat(wal.fileno()).st_size
+        last_commit = committed_pages = 0
+        while wal.tell() + WAL_FRAME_HDR_SZ + PAGE_SZ <= size:
+            if cancel:
+                cancel()
+            frame = wal.read(WAL_FRAME_HDR_SZ)
+            pgno, commit = struct.unpack_from(">II", frame, 0)
+            wal.seek(PAGE_SZ, os.SEEK_CUR)
+            if not pgno:
+                break
+            if struct.unpack_from(">II", frame, 8) == salts and commit:
+                last_commit, committed_pages = wal.tell(), commit
+        if not last_commit:
+            return 0
 
-    frames = []
-    last_commit = 0
-    committed_pages = 0
-    off = WAL_HDR_SZ
-    while off + WAL_FRAME_HDR_SZ + PAGE_SZ <= len(wal):
-        if cancel:cancel()
-        pgno, commit = struct.unpack_from(">II", wal, off)
-        fs1, fs2 = struct.unpack_from(">II", wal, off + 8)
-        page = wal[off + WAL_FRAME_HDR_SZ: off + WAL_FRAME_HDR_SZ + PAGE_SZ]
-        off += WAL_FRAME_HDR_SZ + PAGE_SZ
-        if pgno == 0:
-            break
-        if (fs1, fs2) != (salt1, salt2):     # 旧世代帧，跳过
-            continue
-        frames.append((pgno, page))
-        if commit:
-            last_commit = len(frames)
-            committed_pages = commit
-    frames = frames[:last_commit]
-    if not frames:
-        return 0
-
-    applied = 0
-    with open(db_path, "r+b") as f:
-        for pgno, page in frames:
-            if cancel:cancel()
-            f.seek((pgno - 1) * PAGE_SZ)
-            f.write(decrypt_page(enc_key, page, pgno))
-            applied += 1
-        f.truncate(committed_pages * PAGE_SZ)
-    return applied
+        wal.seek(WAL_HDR_SZ)
+        applied = 0
+        with open(db_path, "r+b") as database:
+            while wal.tell() < last_commit:
+                if cancel:
+                    cancel()
+                frame = wal.read(WAL_FRAME_HDR_SZ)
+                page = wal.read(PAGE_SZ)
+                if len(frame) != WAL_FRAME_HDR_SZ or len(page) != PAGE_SZ:
+                    raise DecryptError("WAL 快照不完整，请重试")
+                pgno = struct.unpack_from(">I", frame, 0)[0]
+                if struct.unpack_from(">II", frame, 8) != salts or pgno > committed_pages:
+                    continue
+                database.seek((pgno - 1) * PAGE_SZ)
+                database.write(decrypt_page(enc_key, page, pgno))
+                applied += 1
+            database.truncate(committed_pages * PAGE_SZ)
+        return applied
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +172,7 @@ def quick_check(db_path: str) -> bool:
     这类库退化为「能读出 sqlite_master 即算通过」。
     """
     try:
-        con = sqlite3.connect("file:%s?mode=ro" % db_path.replace("\\", "/"), uri=True)
+        con = sqlite3.connect(Path(db_path).resolve().as_uri() + '?mode=ro', uri=True)
     except sqlite3.Error:
         return False
     try:

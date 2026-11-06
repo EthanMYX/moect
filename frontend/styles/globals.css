@@ -3,6 +3,38 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Freeze token transitions so the circular boundary separates two crisp scenes. */
+html[data-theme-reveal] *,
+html[data-theme-reveal] *::before,
+html[data-theme-reveal] *::after {
+  transition: none !important;
+}
+html[data-theme-reveal]::view-transition-group(root),
+html[data-theme-reveal]::view-transition-image-pair(root),
+html[data-theme-reveal]::view-transition-old(root),
+html[data-theme-reveal]::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+html[data-theme-reveal]::view-transition-image-pair(root) { isolation: isolate; }
+html[data-theme-reveal]::view-transition-old(root) { z-index: 1; }
+html[data-theme-reveal]::view-transition-new(root) {
+  z-index: 2;
+  animation: moect-theme-reveal 1080ms linear both;
+}
+/* Match Qt's InOutCubic exactly, with a cubic ease on each half. */
+@keyframes moect-theme-reveal {
+  from {
+    clip-path: circle(0px at var(--theme-reveal-x) var(--theme-reveal-y));
+    animation-timing-function: cubic-bezier(.333333,0,.666667,0);
+  }
+  50% {
+    clip-path: circle(calc(var(--theme-reveal-radius) * .5) at var(--theme-reveal-x) var(--theme-reveal-y));
+    animation-timing-function: cubic-bezier(.333333,1,.666667,1);
+  }
+  to { clip-path: circle(var(--theme-reveal-radius) at var(--theme-reveal-x) var(--theme-reveal-y)); }
+}
+
 [data-window-drag]{app-region:drag;-webkit-app-region:drag;user-select:none}
 
 :root {
@@ -160,3 +192,9 @@ html.qce-inter body {
 }
 
 .about-page{min-height:100%;display:flex;flex-direction:column}.about-signature{margin-top:auto;flex-shrink:0;padding:24px 24px 20px;text-align:center}.about-signature button{font-size:11px;color:var(--muted-foreground);opacity:.65;transition:opacity .2s,color .2s}.about-signature button:hover{opacity:1;color:var(--primary)}
+
+.settings-page{width:100%;max-width:960px}
+.settings-page>section{padding:22px 24px;border:1px solid var(--border);border-radius:20px;background:color-mix(in srgb,var(--card) 85%,transparent);box-shadow:0 2px 6px #00000003}
+.settings-page>section>h3{margin:0 0 18px;padding-bottom:14px;border-bottom:1px solid var(--border);font-size:15px;font-weight:600;line-height:1.5}
+.settings-page input[readonly]{min-width:0}
+@media(max-width:640px){.settings-page>section{padding:18px 16px;border-radius:16px}}

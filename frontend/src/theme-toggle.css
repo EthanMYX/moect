@@ -1,0 +1,83 @@
+.theme-toggle-icon {
+  position: relative;
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.theme-toggle-icon svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  transition: opacity .2s ease;
+}
+
+.theme-icon-static { opacity: 1; }
+.theme-icon-loop { opacity: 0; }
+.theme-icon-static .theme-icon-star { opacity: 0; }
+
+.sidebar-theme-shortcut:is(:hover,:focus-visible):not(:disabled) .theme-icon-static { opacity: 0; }
+.sidebar-theme-shortcut:is(:hover,:focus-visible):not(:disabled) .theme-icon-loop { opacity: 1; }
+
+.sidebar-theme-shortcut:is(:hover,:focus-visible):not(:disabled) .theme-icon-loop .theme-icon-rays {
+  transform-origin: 12px 12px;
+  animation: moect-sun-turn 8s linear infinite;
+}
+
+.sidebar-theme-shortcut:is(:hover,:focus-visible):not(:disabled) .theme-icon-loop .theme-icon-moon {
+  transform-origin: 12px 12px;
+  animation: moect-moon-sway 3.2s ease-in-out infinite;
+}
+
+.sidebar-theme-shortcut:is(:hover,:focus-visible):not(:disabled) .theme-icon-loop .theme-icon-star {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: moect-star-twinkle 2.4s ease-in-out infinite;
+}
+
+.sidebar-theme-shortcut:is(:hover,:focus-visible):not(:disabled) .theme-icon-loop .theme-icon-star-small {
+  animation-delay: -1.2s;
+}
+
+.online-update-shortcut:is(:hover,:focus-visible) > svg {
+  animation: moect-download-nudge 1.8s ease-in-out infinite;
+}
+
+.online-notice-shortcut:is(:hover,:focus-visible) > svg {
+  transform-origin: 50% 65%;
+  animation: moect-announcement-sway 1.8s ease-in-out infinite;
+}
+
+@keyframes moect-download-nudge {
+  0%, 70%, 100% { transform: translateY(0); }
+  35% { transform: translateY(2px); }
+}
+
+@keyframes moect-announcement-sway {
+  0%, 70%, 100% { transform: rotate(0deg); }
+  20% { transform: rotate(-9deg); }
+  45% { transform: rotate(7deg); }
+}
+
+@keyframes moect-sun-turn {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes moect-moon-sway {
+  0%, 100% { transform: rotate(-8deg); }
+  50% { transform: rotate(8deg); }
+}
+
+@keyframes moect-star-twinkle {
+  0%, 100% { opacity: .3; transform: scale(.6) rotate(-15deg); }
+  50% { opacity: 1; transform: scale(1.1) rotate(15deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-toggle-icon svg { transition: none; }
+  .sidebar-theme-shortcut .theme-icon-loop *,
+  .sidebar-actions button > svg { animation: none !important; }
+}

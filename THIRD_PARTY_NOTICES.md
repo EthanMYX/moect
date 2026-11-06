@@ -61,3 +61,8 @@ The installer uses Inno Setup, with its ChineseSimplified.isl translation from h
 ## Portable archive calendars and themes
 
 The shared calendar/time custom element is implemented in this repository and bundled inline with exported HTML for offline use. Archive colors use the palette selected in Moect when the export task is created. The experimental Moments UI automation has been removed; the application does not include or use a Windows UI Automation library for Moments.
+
+
+## Export libraries
+
+XlsxWriter 3.2.9 creates streaming XLSX records under its BSD-2-Clause license. pyzipper 0.3.6 creates AES-encrypted ZIP archives under its MIT license. Their original license texts are included in THIRD_PARTY_LICENSES. Archive password memory uses Windows DPAPI for the current Windows user.

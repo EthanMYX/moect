@@ -1,6 +1,6 @@
 ; Build with installer/build.ps1 after python build.py.
 #ifndef AppVersion
-  #define AppVersion "1.2.0"
+  #define AppVersion "1.2.5"
 #endif
 
 [Setup]

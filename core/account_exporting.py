@@ -23,7 +23,7 @@ def write_collection(folder,assets,data):
     data['theme']=archive_theme(data.get('theme'))
     (folder/'data.json').write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding='utf-8')
     encoded=json.dumps(data,ensure_ascii=False).replace('<','\\u003c').replace('\u2028','\\u2028').replace('\u2029','\\u2029')
-    template=theme_archive((assets/'collection.html').read_text(encoding='utf-8'),data['theme']).replace('__DATE_RANGE_PICKER__',(assets/'date-range-picker.js').read_text(encoding='utf-8'))
+    template=theme_archive((assets/'collection.html').read_text(encoding='utf-8'),data['theme']).replace('__DATE_RANGE_PICKER__',(assets/'date-range-picker.js').read_text(encoding='utf-8')).replace('__ARCHIVE_PRINT__',(assets/'archive-print.js').read_text(encoding='utf-8')).replace('__ARCHIVE_MEDIA__',(assets/'archive-media.js').read_text(encoding='utf-8'))
     (folder/'index.html').write_text(template.replace('__COLLECTION__',encoded),encoding='utf-8')
 
 

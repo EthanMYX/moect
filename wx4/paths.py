@@ -16,10 +16,40 @@ import os
 import re
 import string
 import winreg
+from pathlib import Path
 
 XWECHAT_DIRNAME = "xwechat_files"
 DB_STORAGE = "db_storage"
 WXID_RE = re.compile(r"^(?P<wxid>.+?)_(?P<suffix>[0-9a-fA-F]{4})$")
+
+
+def selected_account_dirs(directory):
+    selected = Path(directory).resolve()
+    if not selected.is_dir():
+        raise ValueError('所选目录不存在。请在微信“设置 → 文件管理”查看数据位置。')
+    candidates = [selected]
+    if selected.name in ('session', 'message', 'contact') and selected.parent.name == DB_STORAGE:
+        candidates.append(selected.parent)
+    if selected.name == DB_STORAGE:
+        candidates.append(selected.parent)
+    if (selected/'xwechat_files').is_dir():
+        candidates.append(selected/'xwechat_files')
+    for root in list(candidates):
+        if root.name != DB_STORAGE:
+            candidates.extend(path for path in root.iterdir() if path.is_dir() and (path/DB_STORAGE).is_dir())
+    found = {}
+    for root in candidates:
+        storage = root if root.name == DB_STORAGE else root/DB_STORAGE
+        if storage.is_dir():
+            found[str(storage)] = dict(dir_name=storage.parent.name, wxid=split_wxid(storage.parent.name),
+                                       path=str(storage.parent), db_storage=str(storage))
+    if found:
+        return list(found.values())
+    if any((selected/name).exists() for name in ('Weixin.exe', 'WeChat.exe')):
+        raise ValueError('这是微信程序安装目录。请在微信“设置 → 文件管理”打开数据目录，再选择 xwechat_files 或其中的账号文件夹。')
+    if (selected/'Msg').is_dir() or (selected/'MicroMsg.db').is_file():
+        raise ValueError('检测到旧版微信数据结构。当前支持 Windows 微信 4.x，3.x 数据需要先通过微信迁移或恢复。')
+    raise ValueError('未找到 db_storage。可选择 xwechat_files、账号目录或 db_storage 本身；请在微信“设置 → 文件管理”确认位置。')
 
 
 # --------------------------------------------------------------------------

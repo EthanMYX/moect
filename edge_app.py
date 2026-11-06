@@ -30,7 +30,8 @@ class Api:
         try:
             if not isinstance(action,str) or not isinstance(payload or {},dict):raise ValueError('请求无效')
             payload=payload or {}
-            if len(json.dumps(payload))>100000:raise ValueError('请求过大')
+            bounded = {k: v for k, v in payload.items() if k != 'sessions'} if action == 'export' else payload
+            if len(json.dumps(bounded))>100000:raise ValueError('请求过大')
             svc=self._service;window=self._window
             if action.startswith('window_'):
                 if action=='window_overlay':
@@ -52,12 +53,16 @@ class Api:
                 elif action=='window_close':window.destroy()
                 elif action!='window_state':raise ValueError('不支持的窗口操作')
                 return {'result':{'maximized':self._frame.isMaximized()}}
-            if action in ('choose_archive','choose_output','choose_storage'):
+            if action in ('choose_archive','choose_output','choose_storage','choose_cache','choose_diagnostics'):
                 folders=window.create_file_dialog(webview.FileDialog.FOLDER)
                 if not folders:return {'result':{'cancelled':True}}
                 if action=='choose_output':
                     svc.config['export_dir']=folders[0];svc.save();result=svc.state()
                 elif action=='choose_archive':result=svc.import_archive(folders[0])
+                elif action=='choose_cache':result=svc.storage_job('storage_migrate', folders[0])
+                elif action=='choose_diagnostics':
+                    from core.diagnostics import write_report
+                    result=write_report(svc, folders[0], payload.get('id'))
                 else:result=svc.add_storage(folders[0])
             elif action in ('open_export','open_task_folder','open_output'):
                 if action=='open_export':target=svc.task_file(payload.get('id'))
@@ -126,8 +131,11 @@ class Api:
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--demo',action='store_true')
-    parser.add_argument('--data-dir');parser.add_argument('--smoke')
+    parser.add_argument('--data-dir');parser.add_argument('--smoke');parser.add_argument('--self-check')
     args=parser.parse_args()
+    if args.self_check:
+        from core.selfcheck import run
+        return run(args.self_check)
     # Select monitor-native physical pixels before creating any HWND.
     ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
     service=Service(BASE/'ui',args.data_dir)

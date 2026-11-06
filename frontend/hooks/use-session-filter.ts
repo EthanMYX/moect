@@ -10,7 +10,7 @@ import {
 } from "@/lib/session-sort"
 import { dedupeSessionItems } from "@/lib/session-dedupe"
 
-export type SessionType = 'all' | 'group' | 'friend'
+export type SessionType = 'all' | 'group' | 'friend' | 'official' | 'other'
 export type { SortField, SortOrder }
 
 export interface SessionFilterState {
@@ -25,6 +25,7 @@ export interface SessionFilterState {
 export interface SessionItem {
   id: string
   type: 'group' | 'friend'
+  category?: 'group' | 'friend' | 'official' | 'other'
   name: string
   subName?: string
   avatarUrl: string
@@ -88,6 +89,8 @@ export interface UseSessionFilterReturn {
   // Stats
   groupCount: number
   friendCount: number
+  officialCount: number
+  otherCount: number
 }
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100, 200]
@@ -144,6 +147,7 @@ export function useSessionFilter(
       return {
         id: f.uid,
         type: 'friend' as const,
+        category: f.sessionCategory || 'friend',
         name: f.remark || f.nick,
         subName: f.remark && f.nick !== f.remark ? f.nick : undefined,
         avatarUrl: f.avatarUrl || "",
@@ -176,7 +180,7 @@ export function useSessionFilter(
 
     // Type filter
     if (type !== 'all') {
-      items = items.filter(item => item.type === type)
+      items = items.filter(item => (item.category || item.type) === type)
     }
 
     // Search filter
@@ -212,7 +216,9 @@ export function useSessionFilter(
 
   // Stats
   const groupCount = groups.length
-  const friendCount = friends.length
+  const friendCount = friends.filter(friend => !friend.sessionCategory || friend.sessionCategory === 'friend').length
+  const officialCount = friends.filter(friend => friend.sessionCategory === 'official').length
+  const otherCount = friends.filter(friend => friend.sessionCategory === 'other').length
 
   // Reset page when filters change
   const handleSetSearch = useCallback((value: string) => {
@@ -281,6 +287,8 @@ export function useSessionFilter(
     // Stats
     groupCount,
     friendCount,
+    officialCount,
+    otherCount,
   }
 }
 

@@ -9,7 +9,7 @@ from unittest.mock import patch
 from pathlib import Path
 
 from core.service import Service
-from core.window_state import restore_placement,frame_color,DEFAULT_SIZE
+from core.window_state import restore_placement,frame_color,DEFAULT_SIZE,MIN_SIZE
 from tests.test_resources import ASSETS
 
 
@@ -26,6 +26,17 @@ class WindowStateTests(unittest.TestCase):
         result=restore_placement({**self.saved,'maximized':True},[self.screen])
         self.assertTrue(result['maximized']);self.assertEqual(result['width'],1200)
         self.assertLess(DEFAULT_SIZE[0],1360)
+
+    def test_reference_width_is_default_and_minimum_across_dpi_and_old_preferences(self):
+        self.assertEqual(DEFAULT_SIZE, (1062,800))
+        self.assertEqual(MIN_SIZE[0], DEFAULT_SIZE[0])
+        narrow={**self.saved,'width':1000}
+        self.assertEqual(restore_placement(narrow,[self.screen])['width'],1062)
+        screen={**self.screen,'dpi':144,'width':2560,'height':1368}
+        restored=restore_placement(narrow,[screen])
+        self.assertEqual(restored['width'],1593)
+        self.assertEqual(restore_placement({**self.saved,'width':1500,'dpi':144},[screen])['width'],1593)
+        self.assertEqual(restore_placement({**self.saved,'width':1800},[self.screen])['width'],1800)
 
     def test_dpi_changes_preserve_logical_size_and_relative_position(self):
         screen={**self.screen,'dpi':144,'width':2880,'height':1560,'x':1920}

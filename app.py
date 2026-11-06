@@ -15,6 +15,7 @@ from PySide6.QtWebEngineWidgets import QWebEngineView
 from core.service import Service
 from core.version import SOURCE_URLS
 from core.window_chrome import configure_frame, native_message
+from core.window_state import DEFAULT_SIZE, MIN_SIZE
 
 BASE = Path(getattr(sys, '_MEIPASS', Path(__file__).parent))
 UI = BASE/'ui-qce'
@@ -60,10 +61,11 @@ class Bridge(QObject):
     def request(self, raw):
         request_id = ''
         try:
-            if len(raw) > 100000: raise ValueError('请求过大')
             data=json.loads(raw); request_id=str(data['id'])[:80]
             action=data['action']; payload=data.get('payload') or {}
             if not isinstance(payload,dict): raise ValueError('请求无效')
+            bounded = {k: v for k, v in payload.items() if k != 'sessions'} if action == 'export' else payload
+            if len(json.dumps(bounded)) > 100000: raise ValueError('请求过大')
             if action.startswith('window_'):
                 if action=='window_drag':self.window.windowHandle().startSystemMove()
                 elif action=='window_resize':
@@ -79,15 +81,16 @@ class Bridge(QObject):
                 elif action=='window_close':self.window.close()
                 elif action!='window_state':raise ValueError('不支持的窗口操作')
                 self.send(request_id,{'maximized':self.window.isMaximized()});return
-            if action in ('choose_archive','choose_output','choose_storage'):
-                title={'choose_archive':'选择已解密备份','choose_output':'选择导出位置','choose_storage':'选择微信账号数据目录'}[action]
+            if action in ('choose_archive','choose_output','choose_storage','choose_cache','choose_diagnostics'):
+                title={'choose_archive':'选择已解密备份','choose_output':'选择导出位置','choose_storage':'选择微信账号数据目录','choose_cache':'选择缓存位置','choose_diagnostics':'选择诊断文件保存位置'}[action]
                 folder=QFileDialog.getExistingDirectory(self.window,title)
                 if not folder:
                     self.send(request_id, {'cancelled':True}); return
                 if action=='choose_output':
                     self.service.config['export_dir']=folder; self.service.save()
                     self.send(request_id,self.service.state()); return
-                action, payload=('import_path',{'path':folder}) if action=='choose_archive' else ('storage_path',{'path':folder})
+                selected={'choose_archive':'import_path','choose_storage':'storage_path','choose_cache':'cache_path','choose_diagnostics':'diagnostics_path'}
+                action, payload=selected[action],{'path':folder,'id':payload.get('id')}
             if action in ('open_export','open_task_folder','open_output'):
                 if action=='open_output':
                     target=Path(self.service.config['export_dir']); target.mkdir(parents=True,exist_ok=True)
@@ -109,6 +112,10 @@ class Bridge(QObject):
                 try:
                     if a=='import_path': result=self.service.import_archive(p['path'])
                     elif a=='storage_path': result=self.service.add_storage(p['path'])
+                    elif a=='cache_path': result=self.service.storage_job('storage_migrate',p['path'])
+                    elif a=='diagnostics_path':
+                        from core.diagnostics import write_report
+                        result=write_report(self.service,p['path'],p.get('id'))
                     else: result=self.service.call(a,p)
                     self.send(rid,result)
                 except Exception as exc:
@@ -125,7 +132,7 @@ class Window(QMainWindow):
         self.setWindowFlags(Qt.Window|Qt.FramelessWindowHint)
         self.setWindowTitle('Moect · 聊天记录归档')
         self.setWindowIcon(QIcon(str(UI/'icon.svg')))
-        self.resize(1360,900); self.setMinimumSize(1080,720)
+        self.resize(*DEFAULT_SIZE); self.setMinimumSize(*MIN_SIZE)
         self.view=QWebEngineView(self)
         self.page=Page(self.view)
         self.view.setPage(self.page)

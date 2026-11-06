@@ -14,6 +14,7 @@ import time
 import urllib.request
 import urllib.error
 from itertools import chain
+from contextlib import ExitStack
 from pathlib import Path
 from urllib.parse import urlparse
 from .avatars import AvatarStore,image_type
@@ -43,40 +44,47 @@ def thumbnail_candidate(path,hints):
 
 
 class ResourceStore:
-    def __init__(self,data,session,destination,cancel=lambda:None,status=None,options=None):
+    def __init__(self,data,session,destination,cancel=lambda:None,status=None,options=None,preview=False):
         self.data=data;self.session=session;self.out=Path(destination);self.cancel=cancel
+        self.preview=preview
         self.preferences=export_preferences(options or {})
         self.skipped=set(self.preferences['skip_resource_types'])
         self.avatars=AvatarStore(data,Path(data.root).parent/'avatar-cache')
-        self.tmp=tempfile.TemporaryDirectory(prefix='wce-resource-')
-        self.index=sqlite3.connect(str(Path(self.tmp.name)/'index.db'))
-        self.index.executescript('''
-            CREATE TABLE files (name TEXT,stem TEXT,path TEXT,scoped INTEGER);
-            CREATE INDEX by_name ON files(name); CREATE INDEX by_stem ON files(stem);
-            CREATE TABLE refs (server TEXT,local TEXT,kind INTEGER,ctime INTEGER,source TEXT);
-            CREATE INDEX ref_server ON refs(server); CREATE INDEX ref_local ON refs(local,kind,ctime);
-            CREATE TABLE messages (server TEXT,shard INTEGER,row_key INTEGER,mode TEXT);
-            CREATE INDEX message_server ON messages(server);
-        ''')
-        self.indexed=False;self.refs_indexed=False;self.messages_indexed=False;self.forward_indexed=False;self.forward_remaining=5000
-        self.codec=MediaCodec(cancel);self.keys=ImageKeys(data,cancel,self.codec,status)
-        self.stats={'available':0,'missing':0,'encrypted':0,'unsupported':0,'corrupt':0,'skipped':0}
-        self.failed_downloads=set()
-        self.download_outcomes={};self.prefer_direct=False
-        self.report=open(self.out/'resource-report.jsonl','w',encoding='utf-8')
+        with ExitStack() as handles:
+            self.tmp=tempfile.TemporaryDirectory(prefix='wce-resource-')
+            handles.callback(self.tmp.cleanup)
+            self.index=sqlite3.connect(str(Path(self.tmp.name)/'index.db'))
+            handles.callback(self.index.close)
+            self.index.executescript('''
+                CREATE TABLE files (name TEXT,stem TEXT,path TEXT,scoped INTEGER);
+                CREATE INDEX by_name ON files(name); CREATE INDEX by_stem ON files(stem);
+                CREATE TABLE refs (server TEXT,local TEXT,kind INTEGER,ctime INTEGER,source TEXT);
+                CREATE INDEX ref_server ON refs(server); CREATE INDEX ref_local ON refs(local,kind,ctime);
+                CREATE TABLE messages (server TEXT,shard INTEGER,row_key INTEGER,mode TEXT);
+                CREATE INDEX message_server ON messages(server);
+            ''')
+            self.indexed=False;self.refs_indexed=False;self.messages_indexed=False;self.forward_indexed=False;self.forward_remaining=5000
+            self.codec=MediaCodec(cancel);self.keys=ImageKeys(data,cancel,self.codec,status)
+            if preview:self.keys.scan_remaining=0
+            self.stats={'available':0,'missing':0,'encrypted':0,'unsupported':0,'corrupt':0,'skipped':0}
+            self.failed_downloads=set()
+            self.download_outcomes={};self.prefer_direct=False
+            self.report=handles.enter_context(open(self.out/'resource-report.jsonl','w',encoding='utf-8'))
+            self._handles = handles.pop_all()
 
     def close(self):
-        try:self.report.close()
-        finally:self.index.close();self.tmp.cleanup()
+        self._handles.close()
 
     def _index(self):
         if self.indexed:return
         self.indexed=True
         bases=[(self.data.attach_dir(self.session),1)]
         for name in ('video','file','emoji','emotion','emoticon','record','recorditem'):
-            bases.append((str(Path(self.data.msg_dir())/name),0))
+            if not self.preview or name in ('emoji','emotion','emoticon'):
+                bases.append((str(Path(self.data.msg_dir())/name),0))
         account=Path(self.data.account_dir())
-        bases.extend((str(account/p),0) for p in ('cache','emotion','business/emoticon','FileStorage/CustomEmotion'))
+        if not self.preview:
+            bases.extend((str(account/p),0) for p in ('cache','emotion','business/emoticon','FileStorage/CustomEmotion'))
         seen=set()
         for base,scoped in bases:
             if not base or not Path(base).is_dir():continue
@@ -227,6 +235,9 @@ class ResourceStore:
         except OSError:
             if len(self.download_outcomes)<2048:self.download_outcomes[identity]={'status':'cache_unavailable'}
             return None
+        if self.preview:
+            self.download_outcomes[identity]={'status':'not_cached'}
+            return None
         class Redirect(urllib.request.HTTPRedirectHandler):
             def redirect_request(self,req,fp,code,msg,headers,newurl):
                 if not media_url(newurl):raise ValueError('Invalid media redirect')
@@ -311,7 +322,9 @@ class ResourceStore:
             identity=(hint['url'],role,bool(hint.get('encrypted')))
             if identity in seen:continue
             seen.add(identity)
-            if have_main and role=='main':continue
+            if have_main and (role=='main' or kind in ('image','emoji')):continue
+            if kind in ('image','emoji') and (role=='source_icon' or role=='thumbnail' and any(r['kind']=='image' and r['status']=='available' and r.get('role')=='thumbnail' for r in resources)):
+                continue
             if kind not in ('image','emoji','video','file','link','miniprogram','appmsg','location') or (kind in ('link','miniprogram','appmsg','location') and role not in ('thumbnail','source_icon')):continue
             if kind=='emoji':self.keys.progress('正在获取表情原文件…')
             source=self._download(hint['url'],128*1024*1024 if kind=='video' and role=='main' else 24*1024*1024)
@@ -416,6 +429,7 @@ class ResourceStore:
             original=msg.get('_media') or {}
             msg['_media']={name:list(original.get(name) or []) for name in ('keys','hashes','urls','paths','thumbnail_hashes','main_hashes')}
             self._emoticon_hints(msg)
+        audio_diagnostics={}
         if kind=='voice' and not skip:
             blob=self.data.voice_blob(self.session,msg.get('server_id'))
             if blob:
@@ -424,6 +438,7 @@ class ResourceStore:
                 if converted:
                     resources.append(self._copy(converted,'audio',extension='.wav',identity_source=identity))
                 else:
+                    audio_diagnostics={'reason':self.codec.audio_reason}
                     # A failed conversion is an unsupported original, rather
                     # than an available audio resource that browsers cannot play.
                     resources.append(self._copy(identity,'original',blob,'.silk',status='unsupported'))
@@ -480,7 +495,13 @@ class ResourceStore:
                 'corrupt':'文件内容未能通过格式校验，已保留原文件。'}
             msg['resource_status']=status;msg['resource_notice']=notices[status]
             if kind=='voice' and status=='unsupported':
-                msg['resource_notice']='语音数据未能转换为可播放格式，已保留原始文件。'
+                reason=audio_diagnostics.get('reason')
+                msg['resource_notice']={
+                    'invalid_audio_size':'语音数据为空或超过转换大小限制，已保留原始文件。',
+                    'invalid_silk_packets':'SILK 语音数据不完整或封装暂不支持，已保留原始文件。请在微信完整播放该条语音，刷新聊天快照后重新导出。',
+                    'silk_decoder_unavailable':'SILK 语音解码组件未能加载，已保留原始文件。',
+                    'silk_decode_failed':'SILK 语音解码未成功，已保留原始文件。',
+                }.get(reason,'语音数据未能转换为可播放格式，已保留原始文件。')
             if status=='encrypted':
                 reason=image_diagnostics.get('reason')
                 if reason=='aes_key_unavailable':msg['resource_notice']='尚未找到通过完整 AES 校验的图片密钥，已保留加密原文件。保持微信登录并打开原图后重新导出；若微信以管理员运行，请以同等权限打开本软件。'
@@ -507,6 +528,6 @@ class ResourceStore:
         if resources or msg.get('resource_status') or network_diagnostics:
             self.report.write(json.dumps({'message_id':str(msg.get('server_id') or ''),'kind':kind,
                 'status':msg.get('resource_status','available'),'notice':msg.get('resource_notice',''),
-                'resources':resources,'image_diagnostics':image_diagnostics,
+                'resources':resources,'image_diagnostics':image_diagnostics,'audio_diagnostics':audio_diagnostics,
                 'network_diagnostics':network_diagnostics},ensure_ascii=False)+'\n')
         return msg

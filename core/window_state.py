@@ -1,6 +1,6 @@
 """Physical-pixel window placement, with monitor/DPI recovery and native mask."""
-DEFAULT_SIZE=(1080,800)
-MIN_SIZE=(1000,680)
+DEFAULT_SIZE=(1062,800)
+MIN_SIZE=(DEFAULT_SIZE[0],680)
 
 
 def rect_valid(value):

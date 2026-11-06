@@ -9,6 +9,7 @@ import tempfile
 import time
 import struct
 import wave
+import uuid
 from pathlib import Path
 from Cryptodome.Cipher import AES
 from PIL import Image, UnidentifiedImageError
@@ -145,7 +146,7 @@ class ImageKeys:
         self.scan_remaining=70.;self.rendered=None;self.reason='';self.diagnostics={};self.xor_votes={}
         self.account=Path(data.account_dir());self.xor_search_keys=None
         identity=hashlib.sha256((str(Path(data.account_dir()).resolve())+'\0'+data.wxid).encode()).hexdigest()
-        self.path=app_data_root()/'media-cache'/identity/'image-keys.json'
+        self.path=Path(getattr(data,'cache_root',None) or app_data_root())/'media-cache'/identity/'image-keys.json'
         try:
             state=json.loads(self.path.read_text(encoding='utf-8'))
             self.keys=[bytes.fromhex(k) for k in state.get('keys',[]) if re.fullmatch('[a-fA-F0-9]{32}',k)][:16]
@@ -162,9 +163,12 @@ class ImageKeys:
     def _save(self):
         try:
             self.path.parent.mkdir(parents=True,exist_ok=True)
-            tmp=self.path.with_suffix('.tmp')
-            tmp.write_text(json.dumps({'schema':2,'keys':[k.hex() for k in self.keys[-16:]],'xor':self.xor}),encoding='utf-8')
-            os.replace(tmp,self.path)
+            tmp=self.path.with_name(self.path.name+'.'+uuid.uuid4().hex+'.tmp')
+            try:
+                tmp.write_text(json.dumps({'schema':2,'keys':[k.hex() for k in self.keys[-16:]],'xor':self.xor}),encoding='utf-8')
+                os.replace(tmp,self.path)
+            finally:
+                tmp.unlink(missing_ok=True)
         except OSError:
             # A read-only cache must not prevent exporting a decrypted image.
             pass
@@ -335,8 +339,57 @@ class ImageKeys:
         return None
 
 
+def silk_stream(blob, cancel):
+    """Normalize complete SILK packets before passing them to the native SDK."""
+    raw = blob[1:] if blob.startswith(b'\x02#!SILK_V3') else blob
+    if not raw.startswith(b'#!SILK_V3'):
+        raise ValueError('Missing SILK header')
+    starts = [9]
+    if raw[9:11] == b'\r\n':
+        starts.append(11)
+    elif raw[9:10] == b'\n':
+        starts.append(10)
+    for start in starts:
+        offset = start
+        packets = 0
+        last_packet = b''
+        valid = True
+        while offset < len(raw):
+            cancel()
+            if offset + 2 > len(raw):
+                valid = False
+                break
+            length = struct.unpack_from('<h', raw, offset)[0]
+            offset += 2
+            if length == -1 and offset == len(raw):
+                offset -= 2
+                break
+            # pysilk's SDK has a 1250-byte per-packet buffer. Zero-length
+            # loss packets also need a decoder API this wrapper does not expose.
+            if not 0 < length <= 1250 or offset + length > len(raw):
+                valid = False
+                break
+            last_packet = raw[offset - 2:offset + length]
+            offset += length
+            packets += 1
+            if packets > 30000:
+                valid = False
+                break
+        if not valid or not packets:
+            continue
+        stream = b'\x02#!SILK_V3' + raw[start:offset]
+        # The wrapper preloads two packets without checking their boundaries.
+        # Duplicate a lone packet for that buffer, then remove its decoded PCM.
+        if packets == 1:
+            stream += last_packet
+        return stream + b'\xff\xff', packets
+    raise ValueError('Incomplete or unsupported SILK packet framing')
+
+
 class MediaCodec:
-    def __init__(self,cancel):self.cancel=cancel
+    def __init__(self, cancel):
+        self.cancel = cancel
+        self.audio_reason = ''
 
     def audio(self,blob,destination):
         """Decode WeChat's SILK packets to portable, mono PCM WAV audio.
@@ -344,31 +397,41 @@ class MediaCodec:
         FFmpeg does not decode Tencent SILK. Validate packet boundaries before
         calling the native SILK decoder; never label the original as playable.
         """
-        self.cancel();destination=Path(destination)
-        if not blob or len(blob)>16*1024*1024:return None
+        self.cancel()
+        destination=Path(destination)
+        self.audio_reason=''
+        if not blob or len(blob)>16*1024*1024:
+            self.audio_reason='invalid_audio_size'
+            return None
         raw=blob[1:] if blob.startswith(b'\x02#!SILK_V3') else blob
         if raw.startswith(b'#!SILK_V3'):
-            offset=9;packets=0;end=len(raw)
-            while offset<end:
-                self.cancel()
-                if offset+2>end:return None
-                length=struct.unpack_from('<h',raw,offset)[0];offset+=2
-                if length==-1 and offset==end:
-                    raw=raw[:-2];break  # Standard SILK end marker, absent in WeChat.
-                if length<0 or length>5120 or offset+length>end:return None
-                offset+=length;packets+=1
-                if packets>30000:return None
-            if not packets:return None
+            try:
+                stream,packets=silk_stream(blob,self.cancel)
+            except ValueError:
+                self.audio_reason='invalid_silk_packets'
+                return None
             try:
                 import pysilk
-                pcm=pysilk.decode(b'\x02'+raw,sample_rate=24000)
+            except (ImportError,RuntimeError,OSError):
+                self.audio_reason='silk_decoder_unavailable'
+                return None
+            try:
+                pcm=pysilk.decode(stream,sample_rate=24000)
                 self.cancel()
-                if not pcm or len(pcm)%2 or len(pcm)>144*1024*1024:return None
+                if not pcm or len(pcm)%2 or len(pcm)>144*1024*1024:
+                    self.audio_reason='silk_decode_failed'
+                    return None
+                if packets==1:
+                    if len(pcm)%4:
+                        self.audio_reason='silk_decode_failed'
+                        return None
+                    pcm=pcm[:len(pcm)//2]
                 with wave.open(str(destination),'wb') as output:
                     output.setnchannels(1);output.setsampwidth(2);output.setframerate(24000)
                     output.writeframes(pcm)
                 return destination
-            except (ImportError,RuntimeError,ValueError,OSError,struct.error,wave.Error):
+            except (RuntimeError,ValueError,OSError,struct.error,wave.Error):
+                self.audio_reason='silk_decode_failed'
                 destination.unlink(missing_ok=True)
                 return None
         # Some imported archives contain an ordinary audio stream instead.
@@ -382,6 +445,7 @@ class MediaCodec:
                         if result.getnframes()>0:return destination
             except (OSError,TimeoutError,wave.Error):pass
         destination.unlink(missing_ok=True)
+        self.audio_reason='audio_conversion_failed'
         return None
 
     def _run(self,args,timeout=45):

@@ -3,6 +3,7 @@ import hashlib
 import json
 import math
 import struct
+import sys
 import tempfile
 import unittest
 import wave
@@ -13,15 +14,16 @@ import pysilk
 
 from core.data import Archive
 from core.exporting import export_session
-from core.media_codec import MediaCodec
+from core.media_codec import MediaCodec, silk_stream
 from core.service import Service
 from tests.test_core import fixture,SESSION
 from tests.test_resources import ASSETS,media_fixture
 
 
-def silk_fixture():
-    samples=[int(7000*math.sin(2*math.pi*440*i/24000)) for i in range(4800)]
-    return pysilk.encode(struct.pack('<4800h',*samples),sample_rate=24000)
+def silk_fixture(milliseconds=200, sample_rate=24000):
+    count = sample_rate * milliseconds // 1000
+    samples = [int(7000 * math.sin(2 * math.pi * 440 * i / sample_rate)) for i in range(count)]
+    return pysilk.encode(struct.pack('<%sh' % count, *samples), sample_rate=sample_rate)
 
 
 class AudioTests(unittest.TestCase):
@@ -44,10 +46,44 @@ class AudioTests(unittest.TestCase):
 
     def test_truncated_or_excessive_silk_is_rejected_before_native_decode(self):
         blob=silk_fixture()
-        invalid=(blob[:-1],b'\x02#!SILK_V3\xff\x7f',b'\x02#!SILK_V3'+b'\0\0'*30001)
+        invalid=(blob[:-1],b'\x02#!SILK_V3\xff\x7f',b'\x02#!SILK_V3'+b'\0\0'*30001,
+                 blob+b'\0\0',blob+b'\x00',blob+b'\xfe\xff',
+                 b'\x02#!SILK_V3'+struct.pack('<h',1251)+b'x'*1251)
         with patch('pysilk.decode',side_effect=AssertionError('Invalid packets reached native decoder')):
-            for source in invalid:self.assertIsNone(self.codec.audio(source,self.root/'bad.wav'))
+            for source in invalid:
+                self.assertIsNone(self.codec.audio(source,self.root/'bad.wav'))
+                self.assertEqual(self.codec.audio_reason,'invalid_silk_packets')
         self.assertFalse((self.root/'bad.wav').exists())
+
+    def test_silk_headers_end_markers_and_single_packet_have_correct_duration(self):
+        for rate in (8000, 16000, 24000):
+            for duration in (20, 40, 200):
+                blob = silk_fixture(duration, rate)
+                standard = blob[1:]
+                variants = (blob, standard, standard + b'\xff\xff',
+                            blob[:10] + b'\n' + blob[10:],
+                            standard[:9] + b'\r\n' + standard[9:] + b'\xff\xff')
+                for number, source in enumerate(variants):
+                    with self.subTest(rate=rate, duration=duration, variant=number):
+                        stream, packets = silk_stream(source, lambda: None)
+                        self.assertTrue(stream.startswith(b'\x02#!SILK_V3'))
+                        self.assertTrue(stream.endswith(b'\xff\xff'))
+                        self.assertEqual(packets, duration // 20)
+                        target = self.root/'normalized.wav'
+                        self.assertEqual(self.codec.audio(source, target), target)
+                        self.assertEqual(self.codec.audio_reason, '')
+                        with wave.open(str(target), 'rb') as audio:
+                            self.assertEqual(audio.getnframes(), 24000 * duration // 1000)
+
+    def test_missing_decoder_has_a_distinct_reason_and_recovers_on_next_call(self):
+        blob = silk_fixture()
+        target = self.root/'component.wav'
+        with patch.dict(sys.modules, {'pysilk': None}):
+            self.assertIsNone(self.codec.audio(blob, target))
+        self.assertEqual(self.codec.audio_reason, 'silk_decoder_unavailable')
+        self.assertFalse(target.exists())
+        self.assertEqual(self.codec.audio(blob, target), target)
+        self.assertEqual(self.codec.audio_reason, '')
 
     def test_export_and_forward_voice_are_wav_and_failed_conversion_is_reported(self):
         lib=media_fixture(self.root)
@@ -67,6 +103,9 @@ class AudioTests(unittest.TestCase):
                         self.assertEqual(result['resource_summary']['unsupported'],1)
                         self.assertEqual(result['resource_summary']['missing'],0)
                         self.assertEqual(rows[0]['resources'][0]['kind'],'original')
+                        report_path = next(folder.glob('*_assets/resource-report.jsonl'))
+                        report = json.loads(report_path.read_text(encoding='utf-8').splitlines()[0])
+                        self.assertEqual(report['audio_diagnostics']['reason'], 'invalid_silk_packets')
                     else:
                         for row in (rows[0],rows[1]['forward']['messages'][0]):
                             resource=row['resources'][0]

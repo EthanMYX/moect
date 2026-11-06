@@ -39,12 +39,15 @@ def open_asset_db(library,relative):
     target=root/relative
     if not target.is_file():target=Path(library['root'])/relative
     if not target.is_file():return None
+    con=None
     try:
         con=sqlite3.connect(target.resolve().as_uri()+'?mode=ro',uri=True)
         con.row_factory=sqlite3.Row;con.text_factory=sqlite_text
         con.execute('PRAGMA query_only=ON')
         return con
-    except sqlite3.Error:raise ValueError('资源数据库无法读取，请重新连接并整理微信。') from None
+    except sqlite3.Error:
+        if con is not None:con.close()
+        raise ValueError('资源数据库无法读取，请重新连接并整理微信。') from None
 
 
 def tables(con):return {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}

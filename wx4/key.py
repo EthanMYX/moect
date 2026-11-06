@@ -27,7 +27,6 @@ import json
 import os
 import re
 import struct
-import subprocess
 import time
 
 from .common import KEY_SZ, PAGE_SZ, SALT_SZ, derive_enc_key, verify_enc_key
@@ -137,11 +136,15 @@ def find_weixin_processes() -> list[dict]:
     """列出所有 Weixin.exe 进程，按内存占用降序（主进程内存最大）。"""
     import psutil
     out = []
-    for proc in psutil.process_iter(["pid", "name", "memory_info"]):
+    for proc in psutil.process_iter(["pid", "name"]):
         try:
             if (proc.info["name"] or "").lower() == "weixin.exe":
+                try:
+                    memory = proc.memory_info().rss // 1024
+                except (psutil.AccessDenied, psutil.NoSuchProcess):
+                    memory = 0
                 out.append({"pid": proc.info["pid"], "name": proc.info["name"],
-                            "mem_kb": proc.info["memory_info"].rss // 1024})
+                            "mem_kb": memory})
         except (psutil.NoSuchProcess, psutil.AccessDenied, AttributeError):
             continue
     out.sort(key=lambda x: x["mem_kb"], reverse=True)

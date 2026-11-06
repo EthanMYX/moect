@@ -1,7 +1,7 @@
-import React,{memo,useEffect,useRef,useState} from 'react'
+import {memo,useEffect,useRef,useState} from 'react'
 import ReactMarkdown,{type Components} from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import {Bell,Upload,History,Settings,ArrowUpRight,ImagePlus,FileText,Check,CheckCircle2,Cloud,ShieldCheck,FolderOpen,RefreshCw,ArrowRight,Download,ChevronRight,Minus,Square,X,Moon,Sun,Link,Heading2,Bold,Eye,PenLine,LoaderCircle,Send,Package,AlertCircle,ExternalLink,Undo2} from 'lucide-react'
+import {Bell,Upload,History,Settings,ArrowUpRight,ImagePlus,FileText,CheckCircle2,Cloud,ShieldCheck,FolderOpen,RefreshCw,ArrowRight,Download,ChevronRight,Minus,Square,X,Moon,Sun,Link,Heading2,Bold,Eye,PenLine,LoaderCircle,Send,Package,AlertCircle,ExternalLink,Undo2} from 'lucide-react'
 import {call} from './native'
 import {useWindowEdges} from './useWindowEdges'
 import {PublisherHistory} from './PublisherHistory'
@@ -9,7 +9,6 @@ import {PublisherHistory} from './PublisherHistory'
 const empty={title:'',body:'',days:90,version:'',notes:'',installer:'',portable:'',tab:'announcement'}
 const nav=[['announcement',Bell,'发布公告'],['release',Upload,'发布更新'],['history',History,'发布记录'],['settings',Settings,'设置与连接']] as const
 const formatDate=(value:string)=>value?new Date(value).toLocaleString('zh-CN',{hour12:false}):'—'
-const bytes=(n:number)=>n>=1048576?(n/1048576).toFixed(1)+' MB':n>=1024?(n/1024).toFixed(1)+' KB':n+' B'
 
 function PreviewImage({src,alt}:{src?:string;alt?:string}){
   const [image,setImage]=useState<{source:string;url:string}|null>(null)

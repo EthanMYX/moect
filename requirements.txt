@@ -8,3 +8,5 @@ pythonnet==3.2.1
 imageio-ffmpeg==0.6.0
 Pillow==12.0.0
 pysilk-mod==1.6.4
+pyzipper==0.3.6
+XlsxWriter==3.2.9

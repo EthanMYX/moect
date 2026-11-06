@@ -183,7 +183,7 @@ def cmd_export(args):
     if not data:
         return 1
     sessions = [args.session] if args.session else None
-    res = exp.export_all(data, args.export_dir, fmt=args.format,
+    exp.export_all(data, args.export_dir, fmt=args.format,
                          sessions=sessions, progress=log,
                          media=args.media, copy_dat=not args.no_copy_dat)
     if args.format == "html" and not args.session:
