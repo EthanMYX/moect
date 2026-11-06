@@ -98,3 +98,11 @@ python build.py
 - **[WeChatMsg](https://github.com/LC044/WeChatMsg)**：为微信聊天记录读取、解析与导出提供了重要基础和参考。
 
 同时感谢 [WeChatMsg 4.x 适配版](https://github.com/chenanhan230-del/WeChatMsg-4x) 及其他依赖项目的作者与贡献者。开源社区的分享让 Moect 得以实现。
+
+## 支持项目
+
+如果 Moect 对你有所帮助，也欢迎在力所能及的范围内请我喝杯咖啡，支持项目后续的开发与维护。
+
+你的反馈、建议和一个 Star，同样是我继续完善项目的动力。感谢每一位使用、分享和支持 Moect 的朋友。
+
+![支持 Moect 开源开发，微信与支付宝打赏码](docs/images/support-donation.png)
