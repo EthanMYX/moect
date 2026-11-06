@@ -53,7 +53,7 @@ def main():
         with urlopen(request,timeout=180) as response:return json.load(response)
     if api('GET','/user')['login'].casefold()!=owner.casefold():raise SystemExit('Credential owner does not match repository.')
     sha=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
-    remote=api('GET',f'/repos/{owner}/{name}/commits/main')['sha']
+    remote=api('GET',f'/repos/{owner}/{name}/git/ref/heads/main')['object']['sha']
     if sha!=remote:raise SystemExit('Push the matching source commit first.')
     tag='v'+VERSION
     try:
