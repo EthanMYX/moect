@@ -20,7 +20,7 @@ export function LocalMediaPreview({ hint }: { hint: any }) {
         .catch(() => {})
         .then(() => {
           if (cancelled) throw new Error("cancelled");
-          return call("preview_media", hint);
+          return call("preview_media", { ...hint, retry: attempt > 0 });
         });
       queue = job.then(
         () => undefined,

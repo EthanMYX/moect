@@ -10,13 +10,14 @@ import time
 import struct
 import wave
 import uuid
+from itertools import islice
 from pathlib import Path
 from Cryptodome.Cipher import AES
 from PIL import Image, UnidentifiedImageError
 from .avatars import image_type
 from .paths import app_data_root
 from wx4.media import (SIG_V1,SIG_V2,V1_KEY,dat_layout,decode_dat,
-                       image_prefix,infer_xor_key,find_dat_aes_key,decrypt_dat_prefix)
+                       image_prefix,infer_xor_key,find_dat_aes_key,decrypt_dat_prefix,read_dat_key_probe)
 
 
 def raster_payload(blob):
@@ -295,10 +296,22 @@ class ImageKeys:
                 self.scanned.add(signature)
                 self.progress('正在重新获取并严格校验微信图片密钥…')
                 started=time.monotonic()
-                recovered=find_dat_aes_key(str(source),cancel=self.cancel,timeout=min(35,self.scan_remaining))
+                paths = tuple(islice(paths, 40))
+                recovered=find_dat_aes_key(str(source),cancel=self.cancel,timeout=min(35,self.scan_remaining),sample_paths=paths)
                 self.scan_remaining-=time.monotonic()-started
                 if recovered:
-                    matching=[recovered];self._remember(recovered,raw)
+                    if decrypt_dat_prefix(raw, recovered) is not None:
+                        matching = [recovered]
+                        self._remember(recovered, raw)
+                    else:
+                        # A recent cache may use the current key while this
+                        # historical original needs an older, unavailable key.
+                        for path in paths:
+                            self.cancel()
+                            probe = read_dat_key_probe(path)
+                            if probe is not None and decrypt_dat_prefix(probe, recovered) is not None:
+                                self._remember(recovered, probe)
+                                break
         self.diagnostics={'format':'v2' if raw.startswith(SIG_V2) else 'v1',
             'aes_verified':bool(matching),'xor_required':bool(lay[2])}
         if not matching:self.reason='aes_key_unavailable';return None

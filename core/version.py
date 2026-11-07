@@ -1,4 +1,4 @@
-VERSION = '1.2.5'
+VERSION = '1.2.6'
 APP_NAME = 'Moect'
 PROJECT_URL = 'https://github.com/mofan6/Moect'
 SOURCE_URLS = {

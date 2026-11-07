@@ -580,6 +580,30 @@ class Release125UiTests(unittest.TestCase):
         page.wait_for_function('() => window.__calls.includes("storage_cleanup") && window.__calls.includes("choose_diagnostics")')
         self.assertEqual(errors, [])
 
+    def test_manual_media_retry_requests_key_recovery_and_displays_the_image(self):
+        page, errors = self.app()
+        page.evaluate('''() => {
+          const invoke=window.pywebview.api.invoke;
+          window.__mediaPayloads=[];
+          window.pywebview.api.invoke=async(action,payload)=>{
+            if(action==='preview_media'){
+              window.__mediaPayloads.push(payload);
+              return {result:payload.retry ? {kind:'image',url:window.__image} : {notice:'合成图片等待解密'}};
+            }
+            return invoke(action,payload);
+          };
+        }''')
+        page.evaluate("window.__wce.showPreview('friend')")
+        page.get_by_text('合成图片等待解密', exact=True).wait_for()
+        self.assertEqual(page.evaluate('window.__mediaPayloads.map(row=>row.retry)'), [False])
+        page.get_by_role('button', name='重试读取', exact=True).click()
+        image = page.get_by_alt_text('微信图片', exact=True)
+        image.wait_for()
+        self.assertTrue(image.evaluate('(img) => img.complete && img.naturalWidth > 0'))
+        self.assertEqual(page.evaluate('window.__mediaPayloads.map(row=>row.retry)'), [False, True])
+        self.assertEqual(page.get_by_role('button', name='重试读取', exact=True).count(), 0)
+        self.assertEqual(errors, [])
+
     def test_offline_emoji_uses_one_image_lightbox_and_direct_page_jump(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

@@ -15,6 +15,7 @@ import re
 import shutil
 import struct
 from dataclasses import dataclass, field
+from itertools import chain, islice
 
 from Cryptodome.Cipher import AES
 
@@ -125,7 +126,54 @@ def decode_dat(data: bytes, aes_key: bytes | None=None, xor_key: int | None=None
     return prefix+mid
 
 
-def find_dat_aes_key(sample_path: str,pids=None,progress=None,cancel=None,timeout=30):
+def read_dat_key_probe(path, limit=128 * 1024 * 1024):
+    """Read the complete AES segment without loading the clear/XOR image body."""
+    try:
+        with open(path, 'rb') as source:
+            header = source.read(15)
+            if len(header) != 15 or header[:6] != SIG_V2:
+                return None
+            aes_size, xor_size = struct.unpack_from('<LL', header, 6)
+            encrypted_size = (aes_size // 16 + 1) * 16
+            if aes_size <= 0 or 15 + encrypted_size > limit or 15 + encrypted_size > os.fstat(source.fileno()).st_size - xor_size:
+                return None
+            ciphertext = source.read(encrypted_size)
+            if len(ciphertext) != encrypted_size:
+                return None
+    except OSError:
+        return None
+    # Preserve the declared plaintext length and all AES bytes. The independent
+    # clear body and XOR tail are irrelevant to validating an AES candidate.
+    return header[:10] + b'\0' * 4 + header[14:] + ciphertext
+
+
+def _dat_key_candidates(buffer):
+    """Try complete key-like strings before sliding through large text runs."""
+    runs = list(re.finditer(rb'[A-Za-z0-9]{16,}', buffer))
+    wide_runs = list(re.finditer(rb'(?:[A-Za-z0-9]\x00){16,}', buffer))
+    for match in runs:
+        yield buffer[match.start():match.start() + 16]
+        if match.end() - match.start() in (32, 64):
+            value = buffer[match.start():match.start() + 32]
+            if re.fullmatch(rb'[a-fA-F0-9]{32}', value):
+                yield bytes.fromhex(value.decode('ascii'))
+    for match in re.finditer(rb'[\x0a\x12\x1a\x22]\x10(.{16})', buffer, re.S):
+        yield match.group(1)
+    for match in wide_runs:
+        value = match.group()[::2]
+        yield value[:16]
+        if len(value) in (32, 64) and re.fullmatch(rb'[a-fA-F0-9]{32}', value[:32]):
+            yield bytes.fromhex(value[:32].decode('ascii'))
+    for match in runs:
+        for offset in range(match.start() + 1, match.end() - 15):
+            yield buffer[offset:offset + 16]
+    for match in wide_runs:
+        value = match.group()[::2]
+        for offset in range(1, len(value) - 15):
+            yield value[offset:offset + 16]
+
+
+def find_dat_aes_key(sample_path: str,pids=None,progress=None,cancel=None,timeout=30,sample_paths=()):
     """Find account image keys using validated prefixes, without alignment assumptions.
 
     Includes 16/32/64-character strings, hex-encoded raw AES keys and binary
@@ -135,30 +183,29 @@ def find_dat_aes_key(sample_path: str,pids=None,progress=None,cancel=None,timeou
     import time
     from . import key as memory
     cancel=cancel or (lambda:None)
-    with open(sample_path,'rb') as f:data=f.read(128*1024*1024)
-    lay=dat_layout(data)
-    if data[:6]!=SIG_V2 or not lay:return None
-    block=lay[0][:16]
+    templates = []
+    seen_probes = set()
+    remaining_bytes = 128 * 1024 * 1024
+    for path in chain((sample_path,), islice(sample_paths, 40)):
+        cancel()
+        probe = read_dat_key_probe(path, remaining_bytes)
+        if probe is None:
+            continue
+        signature = hashlib.sha256(probe).digest()
+        if signature in seen_probes:
+            continue
+        # A damaged original and a good thumbnail can share the same first AES
+        # block. Keep both complete probes so damage cannot hide the valid one.
+        seen_probes.add(signature)
+        templates.append(probe)
+        remaining_bytes -= len(probe)
+        if len(templates) >= 8:
+            break
+    if not templates:
+        return None
+    blocks = b''.join(probe[15:31] for probe in templates)
     if pids is None:pids=[p['pid'] for p in memory.find_weixin_processes()]
     deadline=time.monotonic()+timeout
-    strings=re.compile(rb'[A-Za-z0-9]{16,128}')
-    wide=re.compile(rb'(?:[A-Za-z0-9]\x00){16,64}')
-    binary=re.compile(rb'[\x0a\x12\x1a\x22]\x10(.{16})',re.S)
-    def candidates(buf):
-        for match in strings.finditer(buf):
-            value=match.group()
-            # Key strings often have 32 hex characters; WeChat's AES key can
-            # be the first 16 ASCII characters rather than their hex decode.
-            for offset in range(len(value)-15):
-                yield value[offset:offset+16]
-            if re.fullmatch(rb'[a-fA-F0-9]{32,64}',value):
-                yield bytes.fromhex(value[:32].decode('ascii'))
-        for match in binary.finditer(buf):yield match.group(1)
-        for match in wide.finditer(buf):
-            value=match.group()[::2]
-            yield value[:16]
-            if len(value)==32 and re.fullmatch(rb'[a-fA-F0-9]{32}',value):
-                yield bytes.fromhex(value.decode('ascii'))
     checked=0;seen=set()
     memory.enable_debug_privilege()
     for pid_index,pid in enumerate(pids):
@@ -188,14 +235,17 @@ def find_dat_aes_key(sample_path: str,pids=None,progress=None,cancel=None,timeou
                     length=min(size-offset,4*1024*1024+128)
                     buf=ctypes.create_string_buffer(length);read=ctypes.c_size_t()
                     memory.kernel32.ReadProcessMemory(h,ctypes.c_void_p(base+offset),buf,length,ctypes.byref(read))
-                    for cand in candidates(buf.raw[:read.value]):
-                        if cand in seen:continue
-                        if len(seen)<250000:seen.add(cand)
+                    for cand in _dat_key_candidates(buf.raw[:read.value]):
                         checked+=1
                         if checked%256==0:
                             cancel()
                             if time.monotonic()>=pid_deadline:break
-                        if image_prefix(AES.new(cand,AES.MODE_ECB).decrypt(block)) and decrypt_dat_prefix(data,cand) is not None:return cand
+                        if cand in seen:continue
+                        if len(seen)<250000:seen.add(cand)
+                        plaintext = AES.new(cand, AES.MODE_ECB).decrypt(blocks)
+                        for template_index, probe in enumerate(templates):
+                            if image_prefix(plaintext[template_index * 16:(template_index + 1) * 16]) and decrypt_dat_prefix(probe, cand) is not None:
+                                return cand
         finally:memory.kernel32.CloseHandle(h)
     return None
 

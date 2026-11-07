@@ -668,7 +668,7 @@ class Wx4Data:
             return self._describe_appmsg(msg, out)
         else:
             out["kind"] = "other"
-            out["text"] = "[%s]" % msg["type_name"]
+            out["text"] = "[%s]" % (msg.get("type_name") or TYPE_NAMES.get(mtype, "其他(%s)" % mtype))
         return out
 
     @staticmethod

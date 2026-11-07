@@ -35,7 +35,8 @@ def preview(archive, library, payload, destination, cancel):
     folder.mkdir(parents=True, exist_ok=True)
     cache = folder/'preview.json'
     result = None
-    if cache.is_file():
+    retry = payload.get('retry') is True
+    if cache.is_file() and not retry:
         try:
             result = json.loads(cache.read_text(encoding='utf-8'))
             if not isinstance(result, dict) or not isinstance(result.get('path'), str) or result.get('kind') not in ('image', 'audio'):
@@ -45,13 +46,18 @@ def preview(archive, library, payload, destination, cancel):
     if not result:
         store = ResourceStore(archive.data, session, folder, cancel, options={'includeAvatars': False}, preview=True)
         try:
+            if retry and message['kind'] in ('image', 'emoji'):
+                store.keys.scan_remaining = 8
             enriched = store.enrich(message)
         finally:
             store.close()
         candidates = [item for item in enriched.get('resources', []) if item['status'] == 'available' and item['kind'] in ('image', 'audio')]
         candidates.sort(key=lambda item: item.get('role') != 'main')
         if not candidates:
-            return {'notice': enriched.get('resource_notice') or '本机尚无可预览资源，请在微信打开后刷新，或导出查看。'}
+            notice = enriched.get('resource_notice') or '本机尚无可预览资源，请在微信打开后刷新，或导出查看。'
+            if enriched.get('resource_status') == 'encrypted' and not retry:
+                notice = '图片已缓存，但尚无可用解密材料。请保持微信登录并打开一张图片，再点击“重试读取”获取。'
+            return {'notice': notice}
         result = candidates[0]
         cache.write_text(json.dumps(result), encoding='utf-8')
     path = (folder/result['path']).resolve()

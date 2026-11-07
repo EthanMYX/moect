@@ -38,7 +38,7 @@ def quoted_identifier(value):return '"'+value.replace('"','""')+'"'
 
 def thumbnail_candidate(path,hints):
     stem=path.stem.lower()
-    if stem.endswith(('_t','.t','_thumb','.thumb')):return True
+    if path.suffix.lower()=='.thumb' or stem.endswith(('_t','.t','_thumb','.thumb')):return True
     base=re.sub(r'(?:_h|\.h|_hd|\.hd)$','',stem)
     return base in hints.get('thumbnail_hashes',[]) and base not in hints.get('main_hashes',[])
 
@@ -56,7 +56,7 @@ class ResourceStore:
             self.index=sqlite3.connect(str(Path(self.tmp.name)/'index.db'))
             handles.callback(self.index.close)
             self.index.executescript('''
-                CREATE TABLE files (name TEXT,stem TEXT,path TEXT,scoped INTEGER);
+                CREATE TABLE files (name TEXT,stem TEXT,path TEXT,scoped INTEGER,modified REAL);
                 CREATE INDEX by_name ON files(name); CREATE INDEX by_stem ON files(stem);
                 CREATE TABLE refs (server TEXT,local TEXT,kind INTEGER,ctime INTEGER,source TEXT);
                 CREATE INDEX ref_server ON refs(server); CREATE INDEX ref_local ON refs(local,kind,ctime);
@@ -97,8 +97,12 @@ class ResourceStore:
                     path=Path(root)/name
                     if path.is_symlink() or not path.resolve().is_relative_to(allowed):continue
                     if path.suffix.lower() in ('.db','.db-wal','.db-shm','.log','.ini'):continue
-                    self.index.execute('INSERT INTO files VALUES (?,?,?,?)',
-                        (name.casefold(),path.stem.casefold(),str(path),scoped))
+                    try:
+                        modified = path.stat().st_mtime
+                    except OSError:
+                        continue
+                    self.index.execute('INSERT INTO files VALUES (?,?,?,?,?)',
+                        (name.casefold(),path.stem.casefold(),str(path),scoped,modified))
         self.index.commit()
 
     def _index_forward_media(self):
@@ -117,7 +121,11 @@ class ResourceStore:
                 count+=1;path=Path(root)/name
                 if path.suffix.lower() not in ('.dat','.pic','.jpg','.jpeg','.png','.gif','.webp','.wxgf','.mp4','.mov','.silk','.mp3','.wav'):continue
                 if path.is_symlink() or not path.resolve().is_relative_to(allowed):continue
-                self.index.execute('INSERT INTO files VALUES (?,?,?,0)',(name.casefold(),path.stem.casefold(),str(path)))
+                try:
+                    modified = path.stat().st_mtime
+                except OSError:
+                    continue
+                self.index.execute('INSERT INTO files VALUES (?,?,?,0,?)',(name.casefold(),path.stem.casefold(),str(path),modified))
         self.index.commit()
 
     def _index_refs(self):
@@ -183,7 +191,10 @@ class ResourceStore:
         found=[];kind=msg.get('kind')
         for value in dict.fromkeys(values):
             name=Path(str(value).replace(chr(92),'/')).name.casefold()
-            tokens=[name,name+'_h',name+'_t'] if HASH.fullmatch(name) else [name]
+            tokens = [name]
+            if HASH.fullmatch(name):
+                suffixes = ('_h', '_t', '.h', '.t', '_hd', '.hd', '_thumb', '.thumb') if kind in ('image', 'emoji') else ('_h', '_t')
+                tokens.extend(name + suffix for suffix in suffixes)
             for token in tokens:
                 matches=list(self.index.execute('SELECT path,scoped FROM files WHERE name=? OR stem=? ORDER BY scoped DESC,path',(token,token)))
                 if len(matches)>1 and not HASH.fullmatch(name) and not any(s for _,s in matches):continue
@@ -444,7 +455,7 @@ class ResourceStore:
                     resources.append(self._copy(identity,'original',blob,'.silk',status='unsupported'))
         if kind in ('image','emoji','video','file') and not skip:
             candidates=self._candidates(msg)
-            samples=[Path(p) for p, in self.index.execute("SELECT path FROM files WHERE name LIKE '%.dat' ORDER BY scoped DESC,name LIMIT 40")]
+            samples=[Path(p) for p, in self.index.execute("SELECT path FROM files WHERE name LIKE '%.dat' ORDER BY scoped DESC,modified DESC,name LIMIT 40")]
             for source in candidates:
                 self.cancel()
                 try:

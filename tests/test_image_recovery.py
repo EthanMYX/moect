@@ -1,0 +1,213 @@
+"""Image recovery regressions using synthetic DAT files and fake process memory."""
+import ctypes
+import hashlib
+import json
+import os
+import struct
+import tempfile
+import unittest
+from itertools import islice
+from pathlib import Path
+from unittest.mock import patch
+
+from Cryptodome.Cipher import AES
+
+from core.data import Archive
+from core.exporting import export_session
+from core.media_codec import ImageKeys
+from core.resources import ResourceStore
+from core.service import Service
+from tests.test_core import SESSION
+from tests.test_resources import ASSETS, PNG, media_fixture
+from wx4 import key as memory
+from wx4 import media
+
+
+def encrypted_image(key):
+    padding = 16 - len(PNG) % 16
+    ciphertext = AES.new(key, AES.MODE_ECB).encrypt(PNG + bytes([padding]) * padding)
+    return media.SIG_V2 + struct.pack('<LL', len(PNG), 0) + b'\0' + ciphertext
+
+
+class ImageRecoveryTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.library = media_fixture(self.root)
+        self.library['storage_root'] = str(self.root / 'state')
+        self.archive = Archive(self.library)
+        self.addCleanup(self.archive.close)
+        self.images = self.root / 'account/msg/attach' / hashlib.md5(SESSION.encode()).hexdigest() / '2026-10/Img'
+        self.original = self.images / ('a' * 32 + '.dat')
+        self.key = b'SyntheticKey1234'
+        scanner = patch('core.media_codec.find_dat_aes_key', return_value=None)
+        self.scanner = scanner.start()
+        self.addCleanup(scanner.stop)
+
+    def test_manual_retry_recovers_keys_while_automatic_preview_stays_local(self):
+        self.original.write_bytes(encrypted_image(self.key))
+        service = Service(ASSETS, self.root / 'service')
+        service.library = self.library
+        self.addCleanup(service.shutdown)
+        hint = {'session': SESSION, 'shard': 0, 'local_id': 10, 'server_id': '10'}
+        self.assertNotIn('url', service.preview_media(hint))
+        self.scanner.assert_not_called()
+        self.scanner.return_value = self.key
+        result = service.preview_media({**hint, 'retry': True})
+        self.assertTrue(result.get('url', '').startswith('data:image/png;base64,'))
+        self.assertLessEqual(self.scanner.call_args.kwargs['timeout'], 8)
+        self.assertEqual(service._cache_readers, 0)
+
+    def test_thumbnail_naming_variants_are_exported_with_the_correct_role(self):
+        self.original.unlink()
+        names = ['_t.dat', '.t.dat', '_thumb.dat', '.thumb.dat', '.thumb']
+        for index, suffix in enumerate(names):
+            with self.subTest(suffix=suffix):
+                thumbnail = self.images / ('a' * 32 + suffix)
+                thumbnail.write_bytes(PNG)
+                self.addCleanup(thumbnail.unlink, missing_ok=True)
+                output = self.root / ('thumbnail-' + str(index))
+                output.mkdir()
+                result = export_session(self.archive, self.archive.sessions()[0], {'format': 'json'}, output,
+                                        ASSETS, lambda _: None, lambda: None)
+                messages = json.loads(Path(result['path']).read_text(encoding='utf-8'))['messages']
+                message = next(row for row in messages if row['server_id'] == '10')
+                images = [item for item in message['resources'] if item['kind'] == 'image' and item['status'] == 'available']
+                self.assertEqual(len(images), 1)
+                self.assertEqual(images[0]['role'], 'thumbnail')
+                self.assertEqual((output / images[0]['path']).read_bytes(), PNG)
+                thumbnail.unlink()
+
+    def test_encrypted_original_does_not_hide_a_viewable_thumbnail(self):
+        encrypted = encrypted_image(self.key)
+        self.original.write_bytes(encrypted)
+        (self.images / ('a' * 32 + '.t.dat')).write_bytes(PNG)
+        output = self.root / 'fallback'
+        output.mkdir()
+        result = export_session(self.archive, self.archive.sessions()[0], {'format': 'json'}, output,
+                                ASSETS, lambda _: None, lambda: None)
+        messages = json.loads(Path(result['path']).read_text(encoding='utf-8'))['messages']
+        message = next(row for row in messages if row['server_id'] == '10')
+        thumbnail = next(item for item in message['resources'] if item['role'] == 'thumbnail')
+        self.assertEqual((output / thumbnail['path']).read_bytes(), PNG)
+        original = next(item for item in message['resources'] if item['status'] == 'encrypted')
+        self.assertEqual((output / original['path']).read_bytes(), encrypted)
+
+    def test_recent_sample_key_is_cached_without_claiming_the_old_image_decrypted(self):
+        old = encrypted_image(b'OldSyntheticKey1')
+        self.original.write_bytes(old)
+        recent = self.images / ('b' * 32 + '_t.dat')
+        recent.write_bytes(encrypted_image(self.key))
+        keys = ImageKeys(self.archive.data, lambda: None)
+        self.scanner.return_value = self.key
+        self.assertIsNone(keys.decode(old, self.original, iter([recent])))
+        self.assertFalse(keys.diagnostics['aes_verified'])
+        self.assertIn(self.key, keys.keys)
+        self.assertEqual(keys.decode(recent.read_bytes(), recent, [recent]), PNG)
+        self.scanner.assert_called_once()
+        self.assertIn(recent, self.scanner.call_args.kwargs['sample_paths'])
+
+    def test_unverified_scanner_result_is_not_cached(self):
+        raw = encrypted_image(self.key)
+        self.original.write_bytes(raw)
+        keys = ImageKeys(self.archive.data, lambda: None)
+        self.scanner.return_value = b'InvalidImageKey1'
+        self.assertIsNone(keys.decode(raw, self.original, []))
+        self.assertFalse(keys.keys)
+        self.assertFalse(keys.diagnostics['aes_verified'])
+
+    def test_candidate_priority_reaches_a_key_after_a_long_text_run(self):
+        payload = b'A' * 200000 + b'\0' + self.key * 2 + b'\0'
+        candidates = list(islice(media._dat_key_candidates(payload), 20))
+        self.assertIn(self.key, candidates)
+
+    def test_recovery_samples_prefer_recent_files_over_alphabetical_names(self):
+        self.original.write_bytes(encrypted_image(self.key))
+        os.utime(self.original, (1, 1))
+        for index in range(45):
+            path = self.images / ('%032x.dat' % index)
+            path.write_bytes(encrypted_image(self.key))
+            os.utime(path, (10 + index, 10 + index))
+        recent = self.images / ('f' * 32 + '_t.dat')
+        recent.write_bytes(encrypted_image(self.key))
+        os.utime(recent, (100, 100))
+        output = self.root / 'recency'
+        output.mkdir()
+        store = ResourceStore(self.archive.data, SESSION, output)
+        self.addCleanup(store.close)
+        message = next(row for row in self.archive.messages(SESSION) if row['server_id'] == '10')
+        store.enrich(message)
+        samples = self.scanner.call_args.kwargs['sample_paths']
+        self.assertEqual(len(samples), 40)
+        self.assertEqual(samples[0], recent)
+
+    def test_probe_keeps_full_aes_segment_without_loading_the_image_body(self):
+        encrypted = encrypted_image(self.key)
+        raw = encrypted[:10] + struct.pack('<L', 1000) + encrypted[14:] + b'clear' * 100000 + b'X' * 1000
+        self.original.write_bytes(raw)
+        probe = media.read_dat_key_probe(self.original)
+        self.assertEqual(len(probe), len(encrypted))
+        self.assertEqual(media.decrypt_dat_prefix(probe, self.key), PNG)
+        self.assertIsNone(media.read_dat_key_probe(self.original, len(encrypted) - 1))
+        for truncated in (b'', encrypted[:14], encrypted[:-1]):
+            with self.subTest(length=len(truncated)):
+                self.original.write_bytes(truncated)
+                self.assertIsNone(media.read_dat_key_probe(self.original))
+
+    def test_process_search_requires_full_padding_and_declared_size_validation(self):
+        encrypted = encrypted_image(self.key)
+        padding = 16 - len(PNG) % 16
+        invalid_padding = encrypted[:15] + AES.new(self.key, AES.MODE_ECB).encrypt(PNG + b'\0' * padding)
+        invalid_size = encrypted[:6] + struct.pack('<L', len(PNG) + 1) + encrypted[10:]
+        for raw in (invalid_padding, invalid_size):
+            with self.subTest(header=raw[:15]):
+                self.original.write_bytes(raw)
+                self.assertIsNone(media.decrypt_dat_prefix(raw, self.key))
+                self.assertIsNone(self.fake_process_search([]))
+
+    def test_damaged_original_does_not_hide_valid_sample_with_the_same_first_block(self):
+        encrypted = encrypted_image(self.key)
+        padding = 16 - len(PNG) % 16
+        invalid = encrypted[:15] + AES.new(self.key, AES.MODE_ECB).encrypt(PNG + b'\0' * padding)
+        self.original.write_bytes(invalid)
+        recent = self.images / 'recent.dat'
+        recent.write_bytes(encrypted)
+        self.assertEqual(invalid[15:31], encrypted[15:31])
+        self.assertEqual(self.fake_process_search([recent]), self.key)
+
+    def test_process_search_checks_recent_templates_with_full_aes_validation(self):
+        self.original.write_bytes(encrypted_image(b'OldSyntheticKey1'))
+        recent = self.images / 'recent.dat'
+        recent.write_bytes(encrypted_image(self.key))
+        self.assertEqual(self.fake_process_search([recent]), self.key)
+
+    def fake_process_search(self, samples):
+        payload = b'\0' + self.key * 2 + b'\0'
+
+        def query(_handle, address, information, _size):
+            if address.value:
+                return 0
+            region = ctypes.cast(information, ctypes.POINTER(memory._MBI)).contents
+            region.BaseAddress = 0x10000
+            region.RegionSize = len(payload)
+            region.State = memory.MEM_COMMIT
+            region.Protect = 0x04
+            region.Type = 0x20000
+            return ctypes.sizeof(region)
+
+        def read(_handle, _address, buffer, _size, count):
+            ctypes.memmove(buffer, payload, len(payload))
+            ctypes.cast(count, ctypes.POINTER(ctypes.c_size_t))[0] = len(payload)
+            return True
+
+        with patch.object(memory, 'enable_debug_privilege'), \
+                patch.object(memory.kernel32, 'OpenProcess', return_value=1), \
+                patch.object(memory.kernel32, 'CloseHandle'), \
+                patch.object(memory.kernel32, 'VirtualQueryEx', side_effect=query), \
+                patch.object(memory.kernel32, 'ReadProcessMemory', side_effect=read):
+            return media.find_dat_aes_key(str(self.original), pids=[999999], sample_paths=samples)
+
+
+if __name__ == '__main__':
+    unittest.main()

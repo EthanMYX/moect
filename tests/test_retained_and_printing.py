@@ -90,6 +90,29 @@ class RetainedConversationTests(unittest.TestCase):
         attachment.mkdir(parents=True)
         self.assertEqual(Path(archive.data.attach_dir(retained['username'])), attachment)
 
+    def test_retained_fallback_message_types_do_not_abort_session_loading(self):
+        table = self.retain_friend(unknown=True)
+        database = Path(self.library['root'])
+        cases = [(37, '好友请求'), (51, '状态'), (66, '连线'),
+                 (255, '其他(255)'), ((2 << 32) | 51, '状态')]
+        for raw_type, label in cases:
+            with self.subTest(raw_type=raw_type):
+                for shard in range(2):
+                    with closing(sqlite3.connect(database/'message'/f'message_{shard}.db')) as connection, connection:
+                        connection.execute(f'UPDATE "{table}" SET local_type=?', (raw_type,))
+                archive = Archive(self.library)
+                try:
+                    sessions = archive.sessions()
+                    self.assertEqual(len(sessions), 2)
+                    retained = next(row for row in sessions if row['username'].startswith('local-msg:'))
+                    self.assertEqual(retained['summary'], '[' + label + ']')
+                    rows = list(archive.messages(retained['username']))
+                    self.assertEqual(len(rows), 4)
+                    self.assertTrue(all(row['type_name'] == label for row in rows))
+                    self.assertTrue(all(row['content'] == '保留的历史文字' for row in rows))
+                finally:
+                    archive.close()
+
     def test_chinese_and_reserved_path_characters_work_for_readonly_sqlite(self):
         self.assertEqual(validate_root(self.library['root']), str(Path(self.library['root']).resolve()))
         self.assertTrue(quick_check(str(Path(self.library['root'])/'session/session.db')))

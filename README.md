@@ -13,13 +13,13 @@
 [![系统](https://img.shields.io/badge/Windows-10%20%2F%2011%20x64-8771cf?labelColor=282333&style=flat-square)](docs/usage.md)
 [![许可证](https://img.shields.io/badge/license-GPL--3.0-8771cf?labelColor=282333&style=flat-square)](LICENSE)
 
-## 1.2.5 更新
+## 1.2.6 更新
 
-- 会话分类与不限数量的批量排队导出，支持已删除好友的本地保留记录。
-- 新增 Excel、可选 ZIP 压缩与 AES-256 加密，以及 HTML 打印和 PDF 保存。
-- 升级图片预览、缓存管理、空间统计和连接诊断，加入圆形扩散亮暗切换与统一的按钮悬浮动效。
+- 修复补查本地保留会话时，部分消息缺少类型名称导致连接失败的问题。
+- 图片预览“重试读取”会重新尝试获取并校验解密材料，改善新旧缓存共存时的密钥识别。
+- 补齐多种高清图与缩略图命名的识别；原图不可用时，显示并导出本地可用的缩略图。
 
-[查看完整更新说明](docs/release-1.2.5.md)
+[查看完整更新说明](docs/release-1.2.6.md)
 
 ## 特性
 
