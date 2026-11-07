@@ -88,21 +88,4 @@ python build.py
 
 ## 许可证
 
-本项目按 [GPL-3.0](LICENSE) 发布。原始著作权与依赖许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 和 [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES)。Moect 是独立的社区项目，与微信、腾讯及下列项目不存在官方隶属关系。
-
-## 致谢
-
-感谢以下开源项目及其作者和贡献者，为 Moect 提供了重要基础：
-
-- **[QQ Chat Exporter](https://github.com/shuakami/qq-chat-exporter)**：Moect 直接复用和改造了其界面组件，并参考了会话管理、导出流程与聊天记录展示的设计。
-- **[WeChatMsg](https://github.com/LC044/WeChatMsg)**：为微信聊天记录读取、解析与导出提供了重要基础和参考。
-
-同时感谢 [WeChatMsg 4.x 适配版](https://github.com/chenanhan230-del/WeChatMsg-4x) 及其他依赖项目的作者与贡献者。开源社区的分享让 Moect 得以实现。
-
-## 支持项目
-
-如果 Moect 对你有所帮助，也欢迎在力所能及的范围内请我喝杯咖啡，支持项目后续的开发与维护。
-
-你的反馈、建议和一个 Star，同样是我继续完善项目的动力。感谢每一位使用、分享和支持 Moect 的朋友。
-
-![支持 Moect 开源开发，微信与支付宝打赏码](docs/images/support-donation.png)
+本项目按 [GPL-3.0](LICENSE) 发布。原始著作权与依赖许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 和 [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES)。Moect 是独立的社区项目，与微信、腾讯不存在官方隶属关系。
