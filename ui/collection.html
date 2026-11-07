@@ -38,7 +38,9 @@ function collectionCard(item){
   const media=node('div','media');let rendered=false;
   for(const r of item.resources||[]){if(r.status!=='available'||!local(r.path))continue;const image=r.kind==='image',el=node(image?'img':'video',!sticker&&image?'photo':'');el.src=r.path;if(image){el.loading='lazy';el.alt=sticker?item.name:'朋友圈图片';const a=anchor(media,r.path,'',true);if(a){a.className=sticker?'':'photo-link';a.append(el)}}else{el.controls=true;el.preload='metadata';media.append(el)}rendered=true;if(r.role==='thumbnail')card.append(node('div','tag','仅有缩略图，原文件尚不可用'))}
   if(!sticker&&(item.resources||[]).filter(r=>r.kind==='image'&&r.status==='available').length===1)media.classList.add('single');card.append(media);if(!sticker)renderSocial(card,item);if(sticker)card.append(node('div','name',item.name));
-  if(item.status==='missing'||item.media_status?.includes('missing'))card.append(node('div','tag','部分资源未缓存或暂时无法还原'));
+  if(item.status==='missing'||item.media_status?.includes('missing'))card.append(node('div','tag','部分资源未缓存或本地文件不可读取'));
+  if(item.media_status?.includes('encrypted'))card.append(node('div','tag','本地图片已找到，但解密材料尚不可用。请在 Moect 恢复图片读取后重新导出。'));
+  if(item.media_status?.includes('corrupt')||item.media_status?.includes('unsupported'))card.append(node('div','tag','部分本地媒体未通过完整解码或超过处理大小限制，详见资源明细。'));
   if(item.status==='unsupported')card.append(node('div','tag','此条内容的本地数据暂时无法解析'));
   if(item.media_status?.includes('skipped'))card.append(node('div','tag','部分媒体已按导出设置跳过'));
   if(!rendered&&sticker)card.append(node('p','tag','原图未能还原'));

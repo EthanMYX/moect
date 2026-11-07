@@ -173,7 +173,7 @@ def _dat_key_candidates(buffer):
             yield value[offset:offset + 16]
 
 
-def find_dat_aes_key(sample_path: str,pids=None,progress=None,cancel=None,timeout=30,sample_paths=()):
+def find_dat_aes_key(sample_path: str,pids=None,progress=None,cancel=None,timeout=30,sample_paths=(),diagnostics=None):
     """Find account image keys using validated prefixes, without alignment assumptions.
 
     Includes 16/32/64-character strings, hex-encoded raw AES keys and binary
@@ -205,6 +205,7 @@ def find_dat_aes_key(sample_path: str,pids=None,progress=None,cancel=None,timeou
         return None
     blocks = b''.join(probe[15:31] for probe in templates)
     if pids is None:pids=[p['pid'] for p in memory.find_weixin_processes()]
+    if diagnostics is not None:diagnostics.update(processes_found=len(pids),processes_readable=0)
     deadline=time.monotonic()+timeout
     checked=0;seen=set()
     memory.enable_debug_privilege()
@@ -215,6 +216,7 @@ def find_dat_aes_key(sample_path: str,pids=None,progress=None,cancel=None,timeou
         pid_deadline=min(deadline,time.monotonic()+max(2,remaining*share))
         h=memory.kernel32.OpenProcess(PROCESS_QUERY_INFORMATION|PROCESS_VM_READ,False,pid)
         if not h:continue
+        if diagnostics is not None:diagnostics['processes_readable']+=1
         try:
             address=0;mbi=memory._MBI();regions=[]
             while address<memory.MAX_USER_ADDRESS and time.monotonic()<pid_deadline:

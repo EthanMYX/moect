@@ -27,7 +27,7 @@ def decrypt_cache(raw,key):
     except ValueError:return None
 
 
-def discover_emoticon_key(raw,wxid,cancel,timeout=20):
+def discover_emoticon_key(raw,wxid,cancel,timeout=20,validate=None):
     """Only read Weixin.exe. Neither candidate seeds nor process bytes are logged."""
     if os.name!='nt' or not wxid or len(raw)<32 or len(raw)%16:return None
     import ctypes
@@ -65,7 +65,7 @@ def discover_emoticon_key(raw,wxid,cancel,timeout=20):
                     prefix=AES.new(key,AES.MODE_CBC,iv=key).decrypt(raw[:32])
                     if image_prefix(prefix):
                         plain=decrypt_cache(raw,key)
-                        if plain and image_prefix(plain):return key
+                        if plain and image_prefix(plain) and (validate is None or validate(plain)):return key
         finally:memory.kernel32.CloseHandle(handle)
     return None
 
@@ -76,7 +76,7 @@ class StickerCache:
         self.account=Path(data.account_dir()).resolve();self.base=self.account/'business/emoticon'
         token=hashlib.sha256((str(self.account)+'\0'+data.wxid).encode()).hexdigest()
         self.key_path=Path(getattr(data,'cache_root',None) or app_data_root())/'media-cache'/token/'emoticon-key.bin'
-        self.key=None;self.scanned=False;self.packages=OrderedDict()
+        self.key=None;self.scanned=False;self.scan_timeout=20;self.packages=OrderedDict()
         try:
             value=self.key_path.read_bytes()
             if len(value)==16:self.key=value
@@ -94,16 +94,20 @@ class StickerCache:
         if image_prefix(raw):return raw
         plain=decrypt_cache(raw,self.key)
         if plain and image_prefix(plain):return plain
-        if self.scanned:return None
+        if len(raw)%16:return None
+        if self.scanned or self.scan_timeout<=0:return None
         self.scanned=True;self.status('正在获取当前账号的表情缓存解密材料…')
-        key=discover_emoticon_key(raw,self.data.wxid,self.cancel)
+        key=discover_emoticon_key(raw,self.data.wxid,self.cancel,timeout=self.scan_timeout,
+                                  validate=lambda value:self.codec.sticker(value) is not None)
         if key:
+            plain=decrypt_cache(raw,key)
+            if plain is None or self.codec.sticker(plain) is None:return None
             self.key=key
             try:
                 self.key_path.parent.mkdir(parents=True,exist_ok=True)
                 temp=self.key_path.with_suffix('.tmp');temp.write_bytes(key);os.replace(temp,self.key_path)
             except OSError:pass
-            return decrypt_cache(raw,key)
+            return plain
         return None
 
     def render(self,raw,keys=()):

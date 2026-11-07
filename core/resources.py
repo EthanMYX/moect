@@ -46,7 +46,7 @@ def thumbnail_candidate(path,hints):
 class ResourceStore:
     def __init__(self,data,session,destination,cancel=lambda:None,status=None,options=None,preview=False):
         self.data=data;self.session=session;self.out=Path(destination);self.cancel=cancel
-        self.preview=preview
+        self.preview=preview;self.retry=False;self.sticker_decoder=None
         self.preferences=export_preferences(options or {})
         self.skipped=set(self.preferences['skip_resource_types'])
         self.avatars=AvatarStore(data,Path(data.root).parent/'avatar-cache')
@@ -83,7 +83,7 @@ class ResourceStore:
             if not self.preview or name in ('emoji','emotion','emoticon'):
                 bases.append((str(Path(self.data.msg_dir())/name),0))
         account=Path(self.data.account_dir())
-        if not self.preview:
+        if not self.preview or self.retry:
             bases.extend((str(account/p),0) for p in ('cache','emotion','business/emoticon','FileStorage/CustomEmotion'))
         seen=set()
         for base,scoped in bases:
@@ -212,6 +212,9 @@ class ResourceStore:
                 stem=path.stem.lower()
                 return 2 if thumbnail_candidate(path,hints) else 0 if stem.endswith(('_h','.h','_hd','.hd')) else 1
             found.sort(key=tier)
+        if not found and kind in ('image','emoji') and not self.forward_indexed and (not self.preview or self.retry):
+            self._index_forward_media()
+            return self._candidates(msg)
         return found
 
     def _copy(self,source,category,blob=None,extension=None,status='available',role='main',identity_source=None):
@@ -440,6 +443,18 @@ class ResourceStore:
             original=msg.get('_media') or {}
             msg['_media']={name:list(original.get(name) or []) for name in ('keys','hashes','urls','paths','thumbnail_hashes','main_hashes')}
             self._emoticon_hints(msg)
+            from .sticker_cache import StickerCache
+            if self.sticker_decoder is None:
+                self.sticker_decoder=StickerCache(self.data,self.codec,self.cancel,self.keys.progress)
+                self.sticker_decoder.scan_timeout=8 if self.preview and self.retry else 0 if self.preview else 20
+            for digest in msg['_media']['hashes'][:12]:
+                if not HASH.fullmatch(digest):continue
+                member={'md5':digest,'metadata':{'aes_key':next(iter(msg['_media']['keys']),'')}}
+                image,quality=self.sticker_decoder.resolve(member,self,download=False)
+                if image:
+                    resources.append(self._copy('emoticon:'+digest,'image',image,'.'+image_type(image)[0],
+                                                role='thumbnail' if quality=='thumbnail' else 'main'))
+                    break
         audio_diagnostics={}
         if kind=='voice' and not skip:
             blob=self.data.voice_blob(self.session,msg.get('server_id'))
@@ -453,7 +468,7 @@ class ResourceStore:
                     # A failed conversion is an unsupported original, rather
                     # than an available audio resource that browsers cannot play.
                     resources.append(self._copy(identity,'original',blob,'.silk',status='unsupported'))
-        if kind in ('image','emoji','video','file') and not skip:
+        if kind in ('image','emoji','video','file') and not skip and not any(r['role']=='main' for r in resources):
             candidates=self._candidates(msg)
             samples=[Path(p) for p, in self.index.execute("SELECT path FROM files WHERE name LIKE '%.dat' ORDER BY scoped DESC,modified DESC,name LIMIT 40")]
             for source in candidates:

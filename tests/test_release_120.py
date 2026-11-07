@@ -11,7 +11,6 @@ from unittest.mock import patch
 
 from Cryptodome.Cipher import AES
 from Cryptodome.Util.Padding import pad
-from core.account_assets import MomentsCatalog
 from core.account_exporting import export_moments,local_moments_previews
 from core.data import Archive
 from core.service import Service
@@ -76,7 +75,8 @@ class SnsCacheIdentityTests(unittest.TestCase):
     def test_incomplete_tmp_cache_is_rejected_by_decoder(self):
         path=self.prepare(blob=b'incomplete synthetic download');path.rename(path.with_suffix('.tmp'))
         destination,post=self.export()
-        self.assertEqual(post['resources'],[]);self.assertIn('missing',post['media_status'])
+        self.assertEqual(post['resources'],[]);self.assertIn('corrupt',post['media_status'])
+        self.assertEqual(post['media_diagnostics'][0]['reason'],'image_decode_failed')
 
     def test_completed_tmp_cache_remains_usable_after_image_validation(self):
         path=self.prepare();path.rename(path.with_suffix('.tmp'))

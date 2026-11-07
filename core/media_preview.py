@@ -47,6 +47,7 @@ def preview(archive, library, payload, destination, cancel):
         store = ResourceStore(archive.data, session, folder, cancel, options={'includeAvatars': False}, preview=True)
         try:
             if retry and message['kind'] in ('image', 'emoji'):
+                store.retry = True
                 store.keys.scan_remaining = 8
             enriched = store.enrich(message)
         finally:

@@ -76,6 +76,7 @@ class MomentResources:
     def __init__(self,resources,cache=None,index_seconds=None,max_image_bytes=64*1024*1024):
         self.resources=resources;self.index=None;self.cache=Path(cache).resolve() if cache else None;self.cached={}
         self.index_seconds=index_seconds;self.max_image_bytes=max_image_bytes
+        self.key_samples=None;self.last_failure=None
         if self.cache and (self.cache/'media.json').is_file():
             try:self.cached=json.loads((self.cache/'media.json').read_text(encoding='utf-8'))
             except (OSError,ValueError):pass
@@ -113,8 +114,10 @@ class MomentResources:
 
     def convert(self,path,kind,hints):
         store=self.resources
+        self.last_failure={'status':'corrupt','reason':'image_decode_failed'}
         try:
-            if path.stat().st_size>(256*1024*1024 if kind=='video' else self.max_image_bytes):return None
+            if path.stat().st_size>(256*1024*1024 if kind=='video' else self.max_image_bytes):
+                self.last_failure={'status':'unsupported','reason':'file_too_large'};return None
             if kind=='video':
                 with path.open('rb') as stream:signature=media_type(stream.read(32))
                 original=path
@@ -139,14 +142,21 @@ class MomentResources:
                 if raw.startswith((b'\x07\x08V1',b'\x07\x08V2')):
                     # Local SNS caches use the same DAT envelope as chat images.
                     # CDN/ISAAC decoding alone cannot read these files.
-                    decoded=store.keys.decode(raw,path,[],hints.get('keys',[]))
+                    if self.key_samples is None:
+                        from .image_recovery import recent_image_samples
+                        self.key_samples=recent_image_samples(store.data,store.cancel) if store.keys.scan_remaining>0 else []
+                    decoded=store.keys.decode(raw,path,self.key_samples,hints.get('keys',[]))
                     image=store.keys.rendered or (store.codec.image(decoded) if decoded else None)
                     if image:return store._copy(path,'image',image,'.'+image_type(image)[0])
+                    reason=store.keys.reason or 'image_decode_failed'
+                    self.last_failure={'status':'encrypted' if reason in ('aes_key_unavailable','xor_unresolved') else 'corrupt',
+                                       **store.keys.diagnostics,'reason':reason}
                     return None
                 for blob in chain((raw,),sns_variants(raw,hints.get('stream_keys',[]),store.cancel),encrypted_media_variants(raw,hints.get('keys',[]),store.cancel)):
                     image=(store.codec.sticker if hints.get('animated') else store.codec.image)(blob)
                     if image:return store._copy(path,'image',image,'.'+image_type(image)[0])
-        except (OSError,ValueError):pass
+        except OSError:self.last_failure={'status':'missing','reason':'local_file_unreadable'}
+        except ValueError:pass
         return None
 
     def resolve(self,item,include_images,include_videos):
@@ -165,16 +175,23 @@ class MomentResources:
                     if resource.get('role'):result['role']=resource['role']
                     copied.append(result)
             if copied:return {**cached,'resources':copied}
-        thumbnails=[]
+        thumbnails=[];failures=[]
         for source,role in self.local_candidates(hints):
             if role=='thumbnail':thumbnails.append(source);continue
             resource=self.convert(source,kind,hints)
             if resource:return {'kind':kind,'status':'available','resources':[resource]}
+            if self.last_failure:failures.append(dict(self.last_failure))
         if include_images:
             for source in thumbnails:
                 resource=self.convert(source,'image',hints)
                 if resource:
                     resource['role']='thumbnail';return {'kind':kind,'status':'thumbnail','resources':[resource]}
+                if self.last_failure:failures.append(dict(self.last_failure))
+        if failures:
+            failure=next((value for value in failures if value['status']=='encrypted'),failures[0])
+            store.stats[failure['status']]+=1
+            return {'kind':kind,'status':failure['status'],'reason':failure['reason'],
+                    'diagnostics':failure,'resources':[]}
         store.stats['missing']+=1;return {'kind':kind,'status':'missing','resources':[]}
 
 
@@ -197,7 +214,7 @@ def local_moments_previews(archive,library,selection,start=None,end=None):
         try:
             for post in posts:
                 item={k:post.get(k) for k in ('id','author','text','title','create_time','status')}
-                item['author_name']=archive.data.name_of(post['author']) or post['author'];item['thumbnails']=[]
+                item['author_name']=archive.data.name_of(post['author']) or post['author'];item['thumbnails']=[];item['media_status']=[]
                 item['image_count']=sum(m['kind']=='image' for m in post['media'][:9])
                 for media in post['media'][:9]:
                     if media['kind']!='image':continue
@@ -207,6 +224,7 @@ def local_moments_previews(archive,library,selection,start=None,end=None):
                         if target.is_file() and target.stat().st_size<=128*1024:blob=target.read_bytes()
                         elif time.monotonic()<deadline:
                             result=resolver.resolve(media,True,False)
+                            item['media_status'].append(result['status'])
                             for resource in result['resources']:
                                 if resource['kind']!='image':continue
                                 with Image.open(Path(temporary)/resource['path']) as image:
@@ -233,7 +251,7 @@ def export_moments(archive,library,payload,folder,assets,progress,cancel,status)
         for post in catalog.posts(cancel):
             cancel()
             if (start is not None and post['create_time']<start) or (end is not None and post['create_time']>end):continue
-            count+=1;progress(count,0);item=clean(post);item['resources']=[];item['media_status']=[]
+            count+=1;progress(count,0);item=clean(post);item['resources']=[];item['media_status']=[];item['media_diagnostics']=[]
             item['author_name']=archive.data.name_of(post['author']) or post['author']
             item['author_avatar']=archive.avatars.export(post['author'],folder) or ''
             for person in item.get('likes',[])+item.get('comments',[]):
@@ -249,11 +267,13 @@ def export_moments(archive,library,payload,folder,assets,progress,cancel,status)
             if post['status']=='unsupported':resources.stats['unsupported']+=1
             for media in post['media']:
                 cancel();result=resolver.resolve(media,images,videos);item['resources'].extend(result['resources']);item['media_status'].append(result['status'])
+                item['media_diagnostics'].append({k:result[k] for k in ('kind','status','reason','diagnostics') if k in result})
             item.pop('media',None)
             if item['create_time']:
                 try:item['time_str']=datetime.fromtimestamp(item['create_time'],timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')
                 except (ValueError,OverflowError,OSError):item['time_str']='时间未知'
-            resources.report.write(json.dumps({'id':item['id'],'status':item['status'],'media_status':item['media_status']},ensure_ascii=False)+'\n')
+            resources.report.write(json.dumps({'id':item['id'],'status':item['status'],'media_status':item['media_status'],
+                                               'media_diagnostics':item['media_diagnostics']},ensure_ascii=False)+'\n')
             data['items'].append(item)
         data['resource_summary']=dict(resources.stats)
     finally:resources.close()

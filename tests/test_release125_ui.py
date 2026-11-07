@@ -604,6 +604,40 @@ class Release125UiTests(unittest.TestCase):
         self.assertEqual(page.get_by_role('button', name='重试读取', exact=True).count(), 0)
         self.assertEqual(errors, [])
 
+    def test_image_recovery_action_refreshes_preview_without_another_process_scan(self):
+        page, errors = self.app()
+        page.evaluate('''() => {
+          const invoke=window.pywebview.api.invoke;
+          window.__recovered=false;window.__recoveryTasks=[];window.__mediaRetries=[];
+          window.pywebview.api.invoke=async(action,payload)=>{
+            if(action==='recover_images'){
+              window.__calls.push(action);
+              window.__recoveryTasks=[{id:'recovery',kind:'recover_images',title:'恢复图片读取',status:'running',progress:20}];
+              return {result:{job:'recovery'}};
+            }
+            if(action==='preview_media'){
+              window.__mediaRetries.push(payload.retry);
+              return {result:window.__recovered?{kind:'image',url:window.__image}:{notice:'合成图片等待恢复'}};
+            }
+            const response=await invoke(action,payload);
+            if(action==='state'){
+              response.result.tasks=structuredClone(window.__recoveryTasks);
+              response.result.library.data_revision=window.__recovered?'recovered':'original';
+            }
+            return response;
+          };
+        }''')
+        page.evaluate("window.__wce.setTab('sessions')")
+        page.get_by_role('button', name='恢复图片读取', exact=True).click()
+        page.evaluate("window.__wce.showPreview('friend')")
+        page.get_by_text('合成图片等待恢复', exact=True).wait_for()
+        page.wait_for_function('() => window.__wce.state.tasks.some(task=>task.kind==="recover_images")')
+        page.evaluate("window.__recovered=true;window.__recoveryTasks[0].status='completed'")
+        page.get_by_alt_text('微信图片', exact=True).wait_for()
+        self.assertTrue(all(value is False for value in page.evaluate('window.__mediaRetries')))
+        self.assertEqual(page.evaluate('window.__calls.filter(action=>action==="recover_images").length'), 1)
+        self.assertEqual(errors, [])
+
     def test_offline_emoji_uses_one_image_lightbox_and_direct_page_jump(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

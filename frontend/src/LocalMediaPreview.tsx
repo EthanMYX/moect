@@ -8,7 +8,16 @@ export function LocalMediaPreview({ hint }: { hint: any }) {
   const holder = useRef<HTMLDivElement>(null),
     dialog = useRef<HTMLDialogElement>(null);
   const [result, setResult] = useState<any>(null),
-    [attempt, setAttempt] = useState(0);
+    [attempt, setAttempt] = useState(0),
+    [recoveryRevision, setRecoveryRevision] = useState(0);
+  useEffect(() => {
+    const recovered = () => {
+      setAttempt(0);
+      setRecoveryRevision((value) => value + 1);
+    };
+    window.addEventListener("moect-media-recovered", recovered);
+    return () => window.removeEventListener("moect-media-recovered", recovered);
+  }, []);
   useEffect(() => {
     let cancelled = false,
       started = false;
@@ -48,7 +57,7 @@ export function LocalMediaPreview({ hint }: { hint: any }) {
       cancelled = true;
       observer.disconnect();
     };
-  }, [hint.session, hint.shard, hint.local_id, hint.server_id, attempt]);
+  }, [hint.session, hint.shard, hint.local_id, hint.server_id, attempt, recoveryRevision]);
   return (
     <div ref={holder} className="mt-2 min-h-10 max-w-full">
       {!result && (

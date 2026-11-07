@@ -213,7 +213,7 @@ class Service:
                     'library':dict(name=lib.get('profile',{}).get('name') or lib['name'],
                                    profile=lib.get('profile',{}),demo=lib.get('demo', False),
                                    live=bool(lib.get('account_dir')),assets_revision=lib.get('assets_revision',''),
-                                   data_revision=hashlib.sha256((lib.get('root','')+lib.get('assets_revision','')).encode()).hexdigest()[:16],
+                                   data_revision=hashlib.sha256((lib.get('root','')+lib.get('assets_revision','')+lib.get('media_revision','')).encode()).hexdigest()[:16],
                                    imported_at=lib.get('imported_at','')) if lib else None,
                     'tasks': [self.public_task(t) for t in reversed(self.config['tasks'])]}
 
@@ -240,7 +240,7 @@ class Service:
             if self._closed:raise ValueError('软件正在退出，请稍候。')
             if self._maintenance and kind not in ('storage_migrate', 'storage_cleanup'):
                 raise ValueError('正在整理缓存位置，请等待存储任务完成。')
-            if self.storage_warning and kind in ('connect', 'export', 'refresh_assets'):
+            if self.storage_warning and kind in ('connect', 'export', 'refresh_assets', 'recover_images'):
                 raise ValueError(self.storage_warning)
             if self._updating:raise ValueError('正在准备软件更新，请稍候。')
             if kind != 'export' and sum(t['kind'] != 'export' and t['status'] in ('queued','running') for t in self.config['tasks']) >= 10:
@@ -336,7 +336,7 @@ class Service:
         self._moments_preview_cache.clear()
         self._startup_reconnect_result = None
         for task in self.config['tasks']:
-            if task['kind'] in ('connect','refresh_assets') and task['status'] in ('queued','running'):
+            if task['kind'] in ('connect','refresh_assets','recover_images') and task['status'] in ('queued','running'):
                 event=self.events.get(task['id'])
                 if event:event.set()
 
@@ -404,7 +404,7 @@ class Service:
             lib=self.library
             if not lib:raise ValueError('请先连接微信。')
             if lib.get('demo') or not lib.get('account_dir'):return {'reload':True}
-            if any(t['kind'] in ('connect','refresh_assets') and t['status'] in ('queued','running') for t in self.config['tasks']):
+            if any(t['kind'] in ('connect','refresh_assets','recover_images') and t['status'] in ('queued','running') for t in self.config['tasks']):
                 raise ValueError('正在连接或整理微信，请等待当前任务完成。')
             if not self.detect()['running']:raise ValueError('请先打开并登录电脑微信。')
             wanted=os.path.normcase(os.path.abspath(lib['account_dir']))
@@ -696,7 +696,7 @@ class Service:
                 result=MomentsCatalog(library,profile['wxid'],selection['scope'],selection['author_id']).summary(dates.get('start'),dates.get('end'),archive.data.name_of)
                 result['selection']=selection
                 from .account_exporting import local_moments_previews
-                preview_key=(library['root'],library.get('assets_revision'),selection['scope'],selection['author_id'],dates.get('start'),dates.get('end'))
+                preview_key=(library['root'],library.get('assets_revision'),library.get('media_revision'),selection['scope'],selection['author_id'],dates.get('start'),dates.get('end'))
                 with self.lock:posts=self._moments_preview_cache.get(preview_key)
                 if posts is None:
                     posts=local_moments_previews(archive,library,selection,dates.get('start'),dates.get('end'))
@@ -707,13 +707,44 @@ class Service:
                 return result
             finally:archive.close()
 
+    def recover_images(self):
+        from .image_recovery import recover_local_images
+        with self.lock:
+            library = dict(self.library or {})
+            epoch = self._library_epoch
+            if not library.get('account_dir') or library.get('demo'):
+                raise ValueError('请先连接本机微信账号，再恢复图片读取。')
+            if any(t['kind'] in ('connect', 'refresh_assets', 'recover_images') and t['status'] in ('queued', 'running') for t in self.config['tasks']):
+                raise ValueError('正在整理微信或恢复图片，请等待当前任务完成。')
+            job = self._new_job('recover_images', '恢复图片读取')
+        def check():
+            self._check(job)
+            with self.lock:
+                if epoch != self._library_epoch or not self.library or self.library.get('root') != library.get('root'):
+                    raise Cancelled()
+        def work():
+            def status(message):
+                self._update(job, detail=message, progress=min(90, job['progress'] + 10))
+            with self.read_archive(library) as archive:
+                result = recover_local_images(archive.data, check, status)
+            with self.lock:
+                check()
+                self._moments_preview_cache.clear()
+                self.library = {**self.library, 'media_revision': job['id']}
+                self.config['library'] = self.library
+                self._update(job, progress=100, count=result['samples'],
+                             detail='图片解密材料已恢复，预览已刷新；已有 HTML 请重新导出。' if result['decoded_sample']
+                             else '图片 AES 密钥已验证并保存，部分图片尾段或格式仍无法恢复，请重试预览。')
+        self._submit_jobs([(job, work)])
+        return {'job': job['id']}
+
     def refresh_assets(self,payload=None):
         from .account_assets import open_asset_db,tables
         payload=dict(payload or {});prepare_stickers=payload.get('kind')=='stickers'
         with self.lock:
             library=dict(self.library or {});epoch=self._library_epoch
             if not library.get('account_dir') or library.get('demo'):raise ValueError('请先连接本机微信账号，再刷新资源快照。')
-            if any(t['kind'] in ('connect','refresh_assets') and t['status'] in ('queued','running') for t in self.config['tasks']):
+            if any(t['kind'] in ('connect','refresh_assets','recover_images') and t['status'] in ('queued','running') for t in self.config['tasks']):
                 raise ValueError('正在连接或刷新微信，请等待当前任务完成。')
             job=self._new_job('refresh_assets','刷新表情包与朋友圈快照')
             if prepare_stickers:job.update(title='缓存所选表情资源',category='stickers')
@@ -964,6 +995,7 @@ class Service:
                   'export':lambda:self.export(payload),
                   'account_assets':lambda:self.account_assets(payload),
                   'refresh_assets':lambda:self.refresh_assets(payload),'export_account':lambda:self.export_account(payload),
+                  'recover_images':self.recover_images,
                   'cancel':lambda:self.cancel(payload.get('id')),
                   'delete_task':lambda:self.delete_task(payload.get('id')),
                   'delete_tasks':lambda:self.delete_tasks(payload),
