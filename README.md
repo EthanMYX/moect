@@ -97,8 +97,6 @@ python build.py
 - **[QQ Chat Exporter](https://github.com/shuakami/qq-chat-exporter)**：Moect 直接复用和改造了其界面组件，并参考了会话管理、导出流程与聊天记录展示的设计。
 - **[WeChatMsg](https://github.com/LC044/WeChatMsg)**：为微信聊天记录读取、解析与导出提供了重要基础和参考。
 
-同时感谢 [WeChatMsg 4.x 适配版](https://github.com/chenanhan230-del/WeChatMsg-4x) 及其他依赖项目的作者与贡献者。开源社区的分享让 Moect 得以实现。
-
 ## 支持项目
 
 如果 Moect 对你有所帮助，也欢迎在力所能及的范围内请我喝杯咖啡，支持项目后续的开发与维护。
