@@ -1,4 +1,4 @@
-[![Moect 会话、朋友圈与表情包，本地珍藏](docs/images/banner.png?v=1.2.0)](https://github.com/mofan6/Moect/releases/latest)
+[![Moect 会话、朋友圈与表情包，本地珍藏](docs/images/banner.png?v=5394f334b97e)](https://github.com/mofan6/Moect/releases/latest)
 
 **Moect 是一个在 Windows 上读取、整理与导出微信聊天记录的桌面工具。**
 
