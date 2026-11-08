@@ -197,6 +197,58 @@ class ImageRecoveryTests(unittest.TestCase):
         self.assertEqual(len(samples), 40)
         self.assertEqual(samples[0], current)
 
+    def test_recovery_samples_known_images_before_later_directory_metadata_times_out(self):
+        self.original.write_bytes(encrypted_image(self.key))
+        second = self.images / 'second.dat'
+        second.write_bytes(encrypted_image(self.key))
+        attach = self.images.parents[2]
+        slow_month = attach / ('z' * 32) / '2026-11'
+        slow_month.mkdir(parents=True)
+        clock = [0.]
+        is_dir = Path.is_dir
+        iterdir = Path.iterdir
+
+        def ordered_children(path):
+            if path == attach:
+                return iter([self.images.parents[1], slow_month.parent])
+            return iterdir(path)
+
+        def read_metadata(path):
+            if path == slow_month:
+                clock[0] = 9.
+            return is_dir(path)
+
+        with patch.object(Path, 'iterdir', ordered_children), \
+                patch.object(Path, 'is_dir', read_metadata), \
+                patch('core.image_recovery.time.monotonic', side_effect=lambda: clock[0]):
+            samples = recent_image_samples(self.archive.data, seconds=8)
+        self.assertEqual(clock[0], 9.)
+        self.assertEqual(set(samples), {self.original, second})
+
+    def test_directory_discovery_reserves_time_for_reading_images(self):
+        self.original.write_bytes(encrypted_image(self.key))
+        session = self.images.parents[1]
+        for index in range(20):
+            (session / ('slow-%02d' % index)).mkdir()
+        clock = [0.]
+        is_dir = Path.is_dir
+        iterdir = Path.iterdir
+
+        def ordered_children(path):
+            return iter(sorted(iterdir(path)))
+
+        def read_metadata(path):
+            if path.parent == session and path.name.startswith('slow-'):
+                clock[0] += 1.
+            return is_dir(path)
+
+        with patch.object(Path, 'iterdir', ordered_children), \
+                patch.object(Path, 'is_dir', read_metadata), \
+                patch('core.image_recovery.time.monotonic', side_effect=lambda: clock[0]):
+            samples = recent_image_samples(self.archive.data, seconds=8)
+        self.assertIn(self.original, samples)
+        self.assertLess(clock[0], 8.)
+
     def test_account_config_recovers_a_key_absent_from_plaintext_process_memory(self):
         wxid = 'wxid_synthetic_account'
         seed = 0x12345678

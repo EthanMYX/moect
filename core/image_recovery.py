@@ -11,70 +11,34 @@ from wx4.media import SIG_V2, decrypt_dat_prefix, find_dat_aes_key, read_dat_key
 
 
 def recent_image_samples(data, cancel=lambda: None, limit=40, seconds=8):
-    if limit <= 0:
+    if limit <= 0 or seconds <= 0:
         return []
     account = Path(data.account_dir()).resolve()
-    deadline = time.monotonic() + seconds
+    started = time.monotonic()
+    deadline = started + seconds
+    discovery_deadline = started + seconds / 2
     attach = account / 'msg/attach'
-    directories = []
-
-    def children(parent):
-        if not parent.is_dir() or is_link(parent):
-            return
-        try:
-            for path in parent.iterdir():
-                cancel()
-                if time.monotonic() >= deadline:
-                    return
-                if not is_link(path) and path.is_dir() and path.resolve().is_relative_to(account):
-                    yield path
-        except OSError:
-            return
-
-    # Enumerating directory metadata is cheap even for years of history. Reading
-    # every old DAT first is not: a bounded walk used to expire inside the first
-    # conversation, before reaching the image the user has just opened.
-    for session in children(attach):
-        cancel()
-        if time.monotonic() >= deadline:
-            break
-        for month in children(session):
-            cancel()
-            if time.monotonic() >= deadline:
-                break
-            images = month / 'Img'
-            if images.is_dir() and not is_link(images) and images.resolve().is_relative_to(account):
-                directories.append(images)
-    cache = account / 'cache'
-    directories.extend(month / 'Sns' for month in children(cache)
-                       if (month / 'Sns').is_dir() and not is_link(month / 'Sns'))
     ranked = []
-    for directory in directories:
-        cancel()
-        if time.monotonic() >= deadline:
-            break
-        try:
-            ranked.append((directory.stat().st_mtime, str(directory)))
-        except OSError:
-            continue
-    # Directory times prioritize traversal only. Overwriting an existing image
-    # need not change its directory time, so they cannot bound file recency.
-    bases = [Path(path) for _, path in sorted(ranked, reverse=True)]
-    bases.append(attach)  # Retain bounded fallback for older/unusual layouts.
     recent = []
     visited = 0
     seen = set()
-    for base in bases:
-        if not base.is_dir() or is_link(base):
-            continue
+
+    def sample_directory(base, until, max_files=50000):
+        nonlocal visited
+        batch_end = min(50000, visited + max_files)
+        cancel()
+        if visited >= batch_end or time.monotonic() >= until or not base.is_dir() or is_link(base):
+            return
         for directory, dirs, files in os.walk(base, followlinks=False):
             cancel()
+            if visited >= batch_end or time.monotonic() >= until:
+                return
             dirs[:] = [name for name in dirs if not is_link(Path(directory) / name)]
             for name in files:
                 cancel()
+                if visited >= batch_end or time.monotonic() >= until:
+                    return
                 visited += 1
-                if visited > 50000 or time.monotonic() >= deadline:
-                    return [Path(row[1]) for row in sorted(recent, reverse=True)]
                 path = Path(directory) / name
                 if path in seen:
                     continue
@@ -99,6 +63,57 @@ def recent_image_samples(data, cancel=lambda: None, limit=40, seconds=8):
                         heapq.heapreplace(recent, sample)
                 except OSError:
                     continue
+
+    def children(parent):
+        cancel()
+        if time.monotonic() >= discovery_deadline or not parent.is_dir() or is_link(parent):
+            return
+        try:
+            for path in parent.iterdir():
+                cancel()
+                if time.monotonic() >= discovery_deadline:
+                    return
+                if not is_link(path) and path.is_dir() and path.resolve().is_relative_to(account):
+                    yield path
+        except OSError:
+            return
+
+    def add_directory(directory):
+        if not directory.is_dir() or is_link(directory) or not directory.resolve().is_relative_to(account):
+            return
+        if not ranked:
+            # Secure a short first batch before later metadata reads can overrun
+            # the budget. Bound it so a large old directory cannot monopolize it.
+            until = min(discovery_deadline, time.monotonic() + min(0.25, seconds / 8))
+            sample_directory(directory, until, max_files=limit)
+        try:
+            ranked.append((directory.stat().st_mtime, str(directory)))
+        except OSError:
+            pass
+
+    # Directory discovery only prioritizes traversal; reserve half the total
+    # budget for file reads even when directory metadata is slow.
+    for session in children(attach):
+        if time.monotonic() >= discovery_deadline:
+            break
+        for month in children(session):
+            if time.monotonic() >= discovery_deadline:
+                break
+            add_directory(month / 'Img')
+    for month in children(account / 'cache'):
+        if time.monotonic() >= discovery_deadline:
+            break
+        add_directory(month / 'Sns')
+
+    # Overwrites need not update directory times. Keep comparing actual file
+    # times across directories after the heap reaches its sample limit.
+    bases = [Path(path) for _, path in sorted(ranked, reverse=True)]
+    bases.append(attach)  # Retain bounded fallback for older/unusual layouts.
+    for base in bases:
+        cancel()
+        if visited >= 50000 or time.monotonic() >= deadline:
+            break
+        sample_directory(base, deadline)
     return [Path(row[1]) for row in sorted(recent, reverse=True)]
 
 
