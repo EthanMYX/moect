@@ -126,6 +126,7 @@ class ImageRecoveryTests(unittest.TestCase):
 
     def test_limited_recovery_reaches_a_new_image_in_a_different_conversation(self):
         self.original.write_bytes(encrypted_image(self.key))
+        os.utime(self.original, (100, 100))
         for index in range(80):
             old = self.images / ('old-%03d.dat' % index)
             old.write_bytes(encrypted_image(self.key))
@@ -140,6 +141,60 @@ class ImageRecoveryTests(unittest.TestCase):
         with patch('core.image_recovery.time.monotonic', side_effect=lambda: next(ticks)):
             samples = recent_image_samples(self.archive.data, seconds=50)
         self.assertIn(current, samples)
+        self.assertEqual(samples[0], current)
+
+    def test_recovery_keeps_samples_verified_before_a_directory_timeout(self):
+        first = self.images / 'first.dat'
+        second = self.images / 'second.dat'
+        for path in (first, second):
+            path.write_bytes(encrypted_image(self.key))
+        clock = [0.]
+
+        def files():
+            yield first.name
+            yield second.name
+            clock[0] = 9.
+            yield 'after-deadline.dat'
+
+        def walk(*_args, **_kwargs):
+            return iter([(str(self.images), [], files())])
+
+        with patch('core.image_recovery.os.walk', side_effect=walk), \
+                patch('core.image_recovery.time.monotonic', side_effect=lambda: clock[0]):
+            samples = recent_image_samples(self.archive.data, seconds=8)
+        self.assertEqual(set(samples), {first, second})
+
+    def test_recovery_keeps_samples_verified_before_the_file_visit_limit(self):
+        first = self.images / 'first.dat'
+        second = self.images / 'second.dat'
+        for path in (first, second):
+            path.write_bytes(encrypted_image(self.key))
+
+        def walk(*_args, **_kwargs):
+            files = itertools.chain([first.name, second.name], itertools.repeat(first.name, 50000))
+            return iter([(str(self.images), [], files)])
+
+        with patch('core.image_recovery.os.walk', side_effect=walk), \
+                patch('core.image_recovery.time.monotonic', return_value=0.):
+            samples = recent_image_samples(self.archive.data)
+        self.assertEqual(set(samples), {first, second})
+
+    def test_full_sample_set_still_compares_newer_files_in_other_directories(self):
+        self.original.write_bytes(encrypted_image(self.key))
+        os.utime(self.original, (100, 100))
+        for index in range(39):
+            old = self.images / ('old-%03d.dat' % index)
+            old.write_bytes(encrypted_image(self.key))
+            os.utime(old, (100, 100))
+        current = self.images.parents[2] / ('z' * 32) / '2026-11/Img/current.dat'
+        current.parent.mkdir(parents=True)
+        current.write_bytes(encrypted_image(self.key))
+        os.utime(current, (3000, 3000))
+        # An overwrite can make a file newer without changing its directory time.
+        os.utime(current.parent, (500, 500))
+        os.utime(self.images, (2000, 2000))
+        samples = recent_image_samples(self.archive.data, limit=40)
+        self.assertEqual(len(samples), 40)
         self.assertEqual(samples[0], current)
 
     def test_account_config_recovers_a_key_absent_from_plaintext_process_memory(self):

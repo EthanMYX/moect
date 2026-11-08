@@ -1,4 +1,5 @@
 """Explicit, cancellable image recovery confined to the connected account."""
+import heapq
 import json
 import os
 import time
@@ -10,6 +11,8 @@ from wx4.media import SIG_V2, decrypt_dat_prefix, find_dat_aes_key, read_dat_key
 
 
 def recent_image_samples(data, cancel=lambda: None, limit=40, seconds=8):
+    if limit <= 0:
+        return []
     account = Path(data.account_dir()).resolve()
     deadline = time.monotonic() + seconds
     attach = account / 'msg/attach'
@@ -54,8 +57,8 @@ def recent_image_samples(data, cancel=lambda: None, limit=40, seconds=8):
             ranked.append((directory.stat().st_mtime, str(directory)))
         except OSError:
             continue
-    # A newly downloaded file updates its containing directory even when its
-    # session/month ancestors have not changed. Rank at the image directory.
+    # Directory times prioritize traversal only. Overwriting an existing image
+    # need not change its directory time, so they cannot bound file recency.
     bases = [Path(path) for _, path in sorted(ranked, reverse=True)]
     bases.append(attach)  # Retain bounded fallback for older/unusual layouts.
     recent = []
@@ -67,37 +70,33 @@ def recent_image_samples(data, cancel=lambda: None, limit=40, seconds=8):
         for directory, dirs, files in os.walk(base, followlinks=False):
             cancel()
             dirs[:] = [name for name in dirs if not is_link(Path(directory) / name)]
-            candidates = []
             for name in files:
                 cancel()
                 visited += 1
                 if visited > 50000 or time.monotonic() >= deadline:
                     return [Path(row[1]) for row in sorted(recent, reverse=True)]
                 path = Path(directory) / name
+                if path in seen:
+                    continue
+                seen.add(path)
                 if is_link(path) or not path.resolve().is_relative_to(account):
                     continue
                 try:
                     stat = path.stat()
                     if not 31 <= stat.st_size <= 128 * 1024 * 1024:
                         continue
-                    candidates.append((stat.st_mtime, str(path)))
-                except OSError:
-                    continue
-            for modified, filename in sorted(candidates, reverse=True):
-                cancel()
-                if time.monotonic() >= deadline:
-                    return [Path(row[1]) for row in sorted(recent, reverse=True)]
-                path = Path(filename)
-                if path in seen:
-                    continue
-                seen.add(path)
-                try:
+                    sample = (stat.st_mtime, str(path))
+                    if len(recent) == limit and sample <= recent[0]:
+                        continue
                     with path.open('rb') as source:
                         if source.read(6) != SIG_V2:
                             continue
-                    recent.append((modified, filename))
-                    if len(recent) >= limit:
-                        return [Path(row[1]) for row in sorted(recent, reverse=True)]
+                    # Publish each verified sample immediately: a later timeout
+                    # must not discard files already checked in this directory.
+                    if len(recent) < limit:
+                        heapq.heappush(recent, sample)
+                    else:
+                        heapq.heapreplace(recent, sample)
                 except OSError:
                     continue
     return [Path(row[1]) for row in sorted(recent, reverse=True)]
