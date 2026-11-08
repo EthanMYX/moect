@@ -1,6 +1,7 @@
 """Image recovery regressions using synthetic DAT files and fake process memory."""
 import ctypes
 import hashlib
+import itertools
 import json
 import os
 import struct
@@ -13,6 +14,7 @@ from unittest.mock import patch
 from Cryptodome.Cipher import AES
 
 from core.data import Archive
+from core.image_recovery import recent_image_samples
 from core.exporting import export_session
 from core.media_codec import ImageKeys
 from core.resources import ResourceStore
@@ -121,6 +123,105 @@ class ImageRecoveryTests(unittest.TestCase):
         payload = b'A' * 200000 + b'\0' + self.key * 2 + b'\0'
         candidates = list(islice(media._dat_key_candidates(payload), 20))
         self.assertIn(self.key, candidates)
+
+    def test_limited_recovery_reaches_a_new_image_in_a_different_conversation(self):
+        self.original.write_bytes(encrypted_image(self.key))
+        for index in range(80):
+            old = self.images / ('old-%03d.dat' % index)
+            old.write_bytes(encrypted_image(self.key))
+            os.utime(old, (100, 100))
+        os.utime(self.images, (100, 100))
+        current = self.images.parents[2] / ('z' * 32) / '2026-11/Img/recent.dat'
+        current.parent.mkdir(parents=True)
+        current.write_bytes(encrypted_image(self.key))
+        os.utime(current, (2000, 2000))
+        os.utime(current.parent, (2000, 2000))
+        ticks = itertools.count()
+        with patch('core.image_recovery.time.monotonic', side_effect=lambda: next(ticks)):
+            samples = recent_image_samples(self.archive.data, seconds=50)
+        self.assertIn(current, samples)
+        self.assertEqual(samples[0], current)
+
+    def test_account_config_recovers_a_key_absent_from_plaintext_process_memory(self):
+        wxid = 'wxid_synthetic_account'
+        seed = 0x12345678
+        expected = hashlib.md5((str(seed) + wxid).encode()).hexdigest()[:16].encode()
+        self.original.write_bytes(encrypted_image(expected))
+        payload = bytearray(512)
+        struct.pack_into('<I', payload, 56, seed)
+        struct.pack_into('<Q', payload, 64, 0x10000 + 256)
+        struct.pack_into('<QQ', payload, 80, len(wxid), 31)
+        payload[256:256 + len(wxid)] = wxid.encode()
+        diagnostics = {}
+        self.assertNotIn(expected, payload)
+        self.assertEqual(self.search_memory(bytes(payload), wxid, diagnostics), expected)
+        self.assertEqual(diagnostics['key_source'], 'account_config')
+        self.assertIsNone(self.search_memory(bytes(payload), 'wxid_another_account', {}))
+
+    def test_inline_account_config_and_full_image_validation(self):
+        wxid = 'wxid_short'
+        seed = 12345
+        expected = hashlib.md5((str(seed) + wxid).encode()).hexdigest()[:16].encode()
+        payload = bytearray(512)
+        struct.pack_into('<I', payload, 56, seed)
+        payload[64:64 + len(wxid)] = wxid.encode()
+        struct.pack_into('<QQ', payload, 80, len(wxid), 15)
+        valid = encrypted_image(expected)
+        self.original.write_bytes(valid)
+        self.assertEqual(self.search_memory(bytes(payload), wxid, {}), expected)
+        # A valid first block with broken later padding must not accept the seed.
+        self.original.write_bytes(valid[:-1] + bytes([valid[-1] ^ 1]))
+        self.assertIsNone(self.search_memory(bytes(payload), wxid, {}))
+
+    def test_expired_config_search_preserves_time_for_string_fallback(self):
+        self.original.write_bytes(encrypted_image(self.key))
+        clock = [0.]
+
+        def consume_config_budget(_handle, _regions, _wxid, deadline, *_args):
+            clock[0] = deadline
+            return iter(())
+
+        with patch.object(media, '_account_image_key_candidates', side_effect=consume_config_budget), \
+                patch.object(media.time, 'monotonic', side_effect=lambda: clock[0]):
+            diagnostics = {}
+            self.assertEqual(self.search_memory(b'\0' + self.key * 2 + b'\0', 'wxid_synthetic', diagnostics), self.key)
+        self.assertEqual(diagnostics['key_source'], 'process_string')
+
+    def test_cancelled_account_search_closes_the_process_and_does_not_save_keys(self):
+        self.original.write_bytes(encrypted_image(self.key))
+        with patch.object(media, '_account_image_key_candidates', side_effect=RuntimeError('cancelled')):
+            with self.assertRaisesRegex(RuntimeError, 'cancelled'):
+                self.search_memory(b'\0' + self.key * 2 + b'\0', 'wxid_synthetic', {})
+        self.assertFalse(list(self.root.rglob('image-keys.json')))
+
+    def search_memory(self, payload, wxid, diagnostics):
+        def query(_handle, address, information, _size):
+            if address.value:
+                return 0
+            region = ctypes.cast(information, ctypes.POINTER(memory._MBI)).contents
+            region.BaseAddress = 0x10000
+            region.RegionSize = len(payload)
+            region.State = memory.MEM_COMMIT
+            region.Protect = 0x04
+            region.Type = 0x20000
+            return ctypes.sizeof(region)
+
+        def read(_handle, address, buffer, size, count):
+            offset = (address if isinstance(address, int) else address.value) - 0x10000
+            data = payload[offset:offset + size] if offset >= 0 else b''
+            ctypes.memmove(buffer, data, len(data))
+            ctypes.cast(count, ctypes.POINTER(ctypes.c_size_t))[0] = len(data)
+            return bool(data)
+
+        with patch.object(memory, 'enable_debug_privilege'), \
+                patch.object(memory.kernel32, 'OpenProcess', return_value=1), \
+                patch.object(memory.kernel32, 'CloseHandle') as close, \
+                patch.object(memory.kernel32, 'VirtualQueryEx', side_effect=query), \
+                patch.object(memory.kernel32, 'ReadProcessMemory', side_effect=read):
+            try:
+                return media.find_dat_aes_key(str(self.original), pids=[999999], wxid=wxid, diagnostics=diagnostics)
+            finally:
+                close.assert_called_once_with(1)
 
     def test_recovery_samples_prefer_recent_files_over_alphabetical_names(self):
         self.original.write_bytes(encrypted_image(self.key))

@@ -1,5 +1,4 @@
 """Explicit, cancellable image recovery confined to the connected account."""
-import heapq
 import json
 import os
 import time
@@ -12,20 +11,63 @@ from wx4.media import SIG_V2, decrypt_dat_prefix, find_dat_aes_key, read_dat_key
 
 def recent_image_samples(data, cancel=lambda: None, limit=40, seconds=8):
     account = Path(data.account_dir()).resolve()
-    bases = [account / 'msg/attach']
-    cache = account / 'cache'
-    if cache.is_dir() and not is_link(cache):
-        bases.extend(month / 'Sns' for month in sorted(cache.iterdir(), reverse=True)
-                     if month.is_dir() and not is_link(month))
     deadline = time.monotonic() + seconds
+    attach = account / 'msg/attach'
+    directories = []
+
+    def children(parent):
+        if not parent.is_dir() or is_link(parent):
+            return
+        try:
+            for path in parent.iterdir():
+                cancel()
+                if time.monotonic() >= deadline:
+                    return
+                if not is_link(path) and path.is_dir() and path.resolve().is_relative_to(account):
+                    yield path
+        except OSError:
+            return
+
+    # Enumerating directory metadata is cheap even for years of history. Reading
+    # every old DAT first is not: a bounded walk used to expire inside the first
+    # conversation, before reaching the image the user has just opened.
+    for session in children(attach):
+        cancel()
+        if time.monotonic() >= deadline:
+            break
+        for month in children(session):
+            cancel()
+            if time.monotonic() >= deadline:
+                break
+            images = month / 'Img'
+            if images.is_dir() and not is_link(images) and images.resolve().is_relative_to(account):
+                directories.append(images)
+    cache = account / 'cache'
+    directories.extend(month / 'Sns' for month in children(cache)
+                       if (month / 'Sns').is_dir() and not is_link(month / 'Sns'))
+    ranked = []
+    for directory in directories:
+        cancel()
+        if time.monotonic() >= deadline:
+            break
+        try:
+            ranked.append((directory.stat().st_mtime, str(directory)))
+        except OSError:
+            continue
+    # A newly downloaded file updates its containing directory even when its
+    # session/month ancestors have not changed. Rank at the image directory.
+    bases = [Path(path) for _, path in sorted(ranked, reverse=True)]
+    bases.append(attach)  # Retain bounded fallback for older/unusual layouts.
     recent = []
     visited = 0
+    seen = set()
     for base in bases:
         if not base.is_dir() or is_link(base):
             continue
         for directory, dirs, files in os.walk(base, followlinks=False):
             cancel()
             dirs[:] = [name for name in dirs if not is_link(Path(directory) / name)]
+            candidates = []
             for name in files:
                 cancel()
                 visited += 1
@@ -38,12 +80,24 @@ def recent_image_samples(data, cancel=lambda: None, limit=40, seconds=8):
                     stat = path.stat()
                     if not 31 <= stat.st_size <= 128 * 1024 * 1024:
                         continue
+                    candidates.append((stat.st_mtime, str(path)))
+                except OSError:
+                    continue
+            for modified, filename in sorted(candidates, reverse=True):
+                cancel()
+                if time.monotonic() >= deadline:
+                    return [Path(row[1]) for row in sorted(recent, reverse=True)]
+                path = Path(filename)
+                if path in seen:
+                    continue
+                seen.add(path)
+                try:
                     with path.open('rb') as source:
                         if source.read(6) != SIG_V2:
                             continue
-                    heapq.heappush(recent, (stat.st_mtime, str(path)))
-                    if len(recent) > limit:
-                        heapq.heappop(recent)
+                    recent.append((modified, filename))
+                    if len(recent) >= limit:
+                        return [Path(row[1]) for row in sorted(recent, reverse=True)]
                 except OSError:
                     continue
     return [Path(row[1]) for row in sorted(recent, reverse=True)]
@@ -57,7 +111,7 @@ def recover_local_images(data, cancel, status, timeout=45):
     diagnostics = {}
     status('正在读取并严格校验当前账号的图片密钥，可随时取消…')
     key = find_dat_aes_key(str(paths[0]), sample_paths=paths[1:], cancel=cancel,
-                           timeout=timeout, diagnostics=diagnostics)
+                           timeout=timeout, diagnostics=diagnostics, wxid=data.wxid)
     cancel()
     if not key:
         if diagnostics.get('processes_found') == 0:
