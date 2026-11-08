@@ -1,0 +1,93 @@
+name: 问题反馈
+description: 报告连接、预览、导出或界面等功能的异常。
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。请先阅读[使用指南](https://github.com/mofan6/Moect/blob/main/docs/usage.md)和[贡献指南](https://github.com/mofan6/Moect/blob/main/CONTRIBUTING.md)，搜索包含已关闭项的已有 Issue。
+        这里是公开讨论区，请勿上传聊天数据库、聊天导出、真实媒体、密钥或账号凭据。截图、错误信息、本地路径和链接请先脱敏。
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提交前检查
+      options:
+        - label: 我已查看使用指南并搜索已有 Issue，包括已关闭项。
+          required: true
+        - label: 我已检查文本和附件，未包含真实聊天数据、密钥、账号凭据或其他未脱敏的个人信息。
+          required: true
+  - type: input
+    id: moect-version
+    attributes:
+      label: Moect 完整版本
+      description: 从软件或发行包确认版本；源码版请附提交号。无法启动时可填写安装包或 ZIP 文件名。
+      placeholder: "版本号 / 发行包文件名 / 源码提交号"
+    validations:
+      required: true
+  - type: dropdown
+    id: distribution
+    attributes:
+      label: 运行方式
+      options:
+        - 安装版
+        - 便携版
+        - 源码运行
+        - 其他或无法确认（请在下方补充）
+    validations:
+      required: true
+  - type: input
+    id: windows-version
+    attributes:
+      label: Windows 版本
+      description: 可通过 winver 查看系统版本和内部版本号。无法确认时请直接注明。
+      placeholder: "例如：Windows 11 24H2，内部版本号……"
+    validations:
+      required: true
+  - type: input
+    id: wechat-version
+    attributes:
+      label: 电脑微信完整版本
+      description: 请填写电脑端微信版本，尽量包含全部数字；无法确认时请注明。
+      placeholder: "例如：4.x.x.x"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 从哪个页面开始、点击了什么、选择了哪些选项？偶发问题请说明出现频率。
+      placeholder: |
+        1. 打开……
+        2. 选择……
+        3. 点击……
+        4. 出现……
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期结果
+      description: 你期望软件完成什么操作？
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际结果
+      description: 描述具体异常和错误提示；图片问题请区分微信本机能否打开原图，以及 Moect 预览或导出哪个环节失败。
+    validations:
+      required: true
+  - type: textarea
+    id: attempted
+    attributes:
+      label: 已尝试的操作与版本对比
+      description: 可说明最新正式版是否仍能复现、哪个旧版本正常，以及重试后的结果。不必删除原始记录或唯一备份。
+      placeholder: "例如：更新后仍出现 / 尚未更新 / 只在某个选项开启时出现……"
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: 脱敏后的错误信息、截图或最小样例（可选）
+      description: |
+        只附定位所需的最小片段。不要上传整个诊断目录、数据库、真实聊天导出、私人图片或内存转储。
+        隐去微信号、联系人和群名、头像、聊天正文、手机号、二维码、路径中的个人信息及带授权参数的链接。
+        请勿公开任何数据库 / 媒体密钥、密码、Token 或 Cookie；不能安全脱敏时可留空。

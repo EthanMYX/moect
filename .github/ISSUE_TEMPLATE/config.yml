@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 使用指南
+    url: https://github.com/mofan6/Moect/blob/main/docs/usage.md
+    about: 查看安装、连接微信、预览和导出的操作说明。
+  - name: 贡献指南
+    url: https://github.com/mofan6/Moect/blob/main/CONTRIBUTING.md
+    about: 查看反馈要求、PR 流程、基本验证和许可证要求。
