@@ -265,6 +265,103 @@ class ImageRecoveryTests(unittest.TestCase):
         self.assertEqual(diagnostics['key_source'], 'account_config')
         self.assertIsNone(self.search_memory(bytes(payload), 'wxid_another_account', {}))
 
+    def test_empty_or_non_v2_first_directory_does_not_prevent_early_sampling(self):
+        self.original.write_bytes(encrypted_image(self.key))
+        second = self.images / 'second.dat'
+        second.write_bytes(encrypted_image(self.key))
+        attach = self.images.parents[2]
+        first = attach / ('0' * 32) / '2026-11/Img'
+        first.mkdir(parents=True)
+        slow_month = attach / ('z' * 32) / '2026-11'
+        slow_month.mkdir(parents=True)
+        is_dir, iterdir = Path.is_dir, Path.iterdir
+
+        def ordered_children(path):
+            if path == attach:
+                return iter([first.parents[1], self.images.parents[1], slow_month.parent])
+            return iterdir(path)
+
+        for kind in ('empty', 'non-v2'):
+            with self.subTest(first_directory=kind):
+                if kind == 'non-v2':
+                    (first / 'plain.dat').write_bytes(PNG)
+                clock = [0.]
+
+                def read_metadata(path):
+                    if path == slow_month:
+                        clock[0] = 9.
+                    return is_dir(path)
+
+                with patch.object(Path, 'iterdir', ordered_children), \
+                        patch.object(Path, 'is_dir', read_metadata), \
+                        patch('core.image_recovery.time.monotonic', side_effect=lambda: clock[0]):
+                    samples = recent_image_samples(self.archive.data, seconds=8)
+                self.assertEqual(set(samples), {self.original, second})
+
+    def test_account_config_checks_current_chunk_before_later_slow_reads(self):
+        wxid = 'wxid_synthetic_account'
+        seed = 0x12345678
+        expected = hashlib.md5((str(seed) + wxid).encode()).hexdigest()[:16].encode()
+        self.original.write_bytes(encrypted_image(expected))
+        chunk = 4 * 1024 * 1024
+        payload = bytearray(chunk + 1024)
+        struct.pack_into('<I', payload, 56, seed)
+        struct.pack_into('<Q', payload, 64, 0x10000 + 256)
+        struct.pack_into('<QQ', payload, 80, len(wxid), 31)
+        payload[256:256 + len(wxid)] = wxid.encode()
+        clock = [0.]
+
+        def slow_later_read(offset):
+            if offset >= chunk:
+                clock[0] = 11.
+
+        diagnostics = {}
+        with patch.object(media.time, 'monotonic', side_effect=lambda: clock[0]):
+            found = self.search_memory(bytes(payload), wxid, diagnostics, on_read=slow_later_read)
+        self.assertEqual(found, expected)
+        self.assertEqual(diagnostics['key_source'], 'account_config')
+
+    def test_account_config_reserves_time_to_find_objects_in_earlier_chunks(self):
+        wxid = 'wxid_synthetic_account'
+        seed = 0x12345678
+        expected = hashlib.md5((str(seed) + wxid).encode()).hexdigest()[:16].encode()
+        self.original.write_bytes(encrypted_image(expected))
+        chunk = 4 * 1024 * 1024
+        string_offset = chunk + 512
+        payload = bytearray(3 * chunk + 1024)
+        struct.pack_into('<I', payload, 56, seed)
+        struct.pack_into('<Q', payload, 64, 0x10000 + string_offset)
+        struct.pack_into('<QQ', payload, 80, len(wxid), 31)
+        payload[string_offset:string_offset + len(wxid)] = wxid.encode()
+        clock = [0.]
+
+        def slow_later_read(offset):
+            if offset >= 3 * chunk:
+                clock[0] = 11.
+            elif offset >= 2 * chunk:
+                clock[0] = max(clock[0], 6.)
+
+        diagnostics = {}
+        with patch.object(media.time, 'monotonic', side_effect=lambda: clock[0]):
+            found = self.search_memory(bytes(payload), wxid, diagnostics, on_read=slow_later_read)
+        self.assertEqual(found, expected)
+        self.assertEqual(diagnostics['key_source'], 'account_config')
+
+    def test_cancel_during_real_config_scan_releases_the_handle(self):
+        self.original.write_bytes(encrypted_image(self.key))
+        was_read = [False]
+
+        def on_read(_offset):
+            was_read[0] = True
+
+        def cancel():
+            if was_read[0]:
+                raise RuntimeError('cancelled')
+
+        with self.assertRaisesRegex(RuntimeError, 'cancelled'):
+            self.search_memory(b'wxid_synthetic_account\0' + bytes(512),
+                               'wxid_synthetic_account', {}, on_read=on_read, cancel=cancel)
+
     def test_inline_account_config_and_full_image_validation(self):
         wxid = 'wxid_short'
         seed = 12345
@@ -301,7 +398,7 @@ class ImageRecoveryTests(unittest.TestCase):
                 self.search_memory(b'\0' + self.key * 2 + b'\0', 'wxid_synthetic', {})
         self.assertFalse(list(self.root.rglob('image-keys.json')))
 
-    def search_memory(self, payload, wxid, diagnostics):
+    def search_memory(self, payload, wxid, diagnostics, *, on_read=None, cancel=None):
         def query(_handle, address, information, _size):
             if address.value:
                 return 0
@@ -315,6 +412,8 @@ class ImageRecoveryTests(unittest.TestCase):
 
         def read(_handle, address, buffer, size, count):
             offset = (address if isinstance(address, int) else address.value) - 0x10000
+            if on_read:
+                on_read(offset)
             data = payload[offset:offset + size] if offset >= 0 else b''
             ctypes.memmove(buffer, data, len(data))
             ctypes.cast(count, ctypes.POINTER(ctypes.c_size_t))[0] = len(data)
@@ -326,7 +425,8 @@ class ImageRecoveryTests(unittest.TestCase):
                 patch.object(memory.kernel32, 'VirtualQueryEx', side_effect=query), \
                 patch.object(memory.kernel32, 'ReadProcessMemory', side_effect=read):
             try:
-                return media.find_dat_aes_key(str(self.original), pids=[999999], wxid=wxid, diagnostics=diagnostics)
+                return media.find_dat_aes_key(str(self.original), pids=[999999], wxid=wxid,
+                                              diagnostics=diagnostics, cancel=cancel)
             finally:
                 close.assert_called_once_with(1)
 

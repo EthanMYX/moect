@@ -81,9 +81,9 @@ def recent_image_samples(data, cancel=lambda: None, limit=40, seconds=8):
     def add_directory(directory):
         if not directory.is_dir() or is_link(directory) or not directory.resolve().is_relative_to(account):
             return
-        if not ranked:
-            # Secure a short first batch before later metadata reads can overrun
-            # the budget. Bound it so a large old directory cannot monopolize it.
+        if not recent:
+            # Empty/non-V2 directories must not disable early sampling in later
+            # directories. Each short batch still shares the discovery deadline.
             until = min(discovery_deadline, time.monotonic() + min(0.25, seconds / 8))
             sample_directory(directory, until, max_files=limit)
         try:

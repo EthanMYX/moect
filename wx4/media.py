@@ -205,11 +205,17 @@ def _account_image_key_candidates(handle, regions, wxid, deadline, cancel, diagn
     heaps = [region for region in regions if region[0] == 0]
     addresses = set()
     objects = set()
+    long_account = len(account) > 15
+    now = time.monotonic()
+    # Leave time to revisit objects that precede their heap-allocated string.
+    discovery_deadline = now + max(0., deadline - now) / 2 if long_account else deadline
 
     def candidate(address):
         if address in objects or address < 0x10008:
             return None
         objects.add(address)
+        if diagnostics is not None:
+            diagnostics['account_objects'] = diagnostics.get('account_objects', 0) + 1
         record = memory._read(handle, address - 8, 40)
         if not record or len(record) != 40:
             return None
@@ -219,42 +225,49 @@ def _account_image_key_candidates(handle, regions, wxid, deadline, cancel, diagn
         seed = struct.unpack_from('<I', record)[0]
         return hashlib.md5((str(seed) + wxid).encode('utf-8')).hexdigest()[:16].encode('ascii')
 
-    for base, buffer in _image_key_buffers(handle, heaps, deadline, cancel):
+    def pointer_candidates(base, buffer, until):
+        for address in addresses:
+            cancel()
+            if time.monotonic() >= until:
+                return
+            pointer = struct.pack('<Q', address)
+            offset = buffer.find(pointer)
+            while offset >= 0:
+                cancel()
+                if time.monotonic() >= until:
+                    return
+                value = candidate(base + offset)
+                if value is not None:
+                    yield value
+                offset = buffer.find(pointer, offset + 1)
+
+    for base, buffer in _image_key_buffers(handle, heaps, discovery_deadline, cancel):
         offset = buffer.find(account + b'\0')
         while offset >= 0:
             cancel()
-            if time.monotonic() >= deadline:
-                return
-            addresses.add(base + offset)
-            if len(account) <= 15:
+            if time.monotonic() >= discovery_deadline:
+                break
+            address = base + offset
+            if address not in addresses:
+                addresses.add(address)
+                if diagnostics is not None:
+                    diagnostics['account_strings'] = diagnostics.get('account_strings', 0) + 1
+            if not long_account:
                 value = candidate(base + offset)
                 if value is not None:
                     yield value
             offset = buffer.find(account + b'\0', offset + 1)
             if len(addresses) >= 256:
                 break
-        if len(addresses) >= 256:
+        if long_account and addresses:
+            # Check the current chunk before another slow memory read can use
+            # the remaining budget. No full-process buffer cache is retained.
+            yield from pointer_candidates(base, buffer, discovery_deadline)
+        if len(addresses) >= 256 or time.monotonic() >= discovery_deadline:
             break
-    if diagnostics is not None:
-        diagnostics['account_strings'] = diagnostics.get('account_strings', 0) + len(addresses)
-    if len(account) > 15:
-        pointers = [struct.pack('<Q', address) for address in addresses]
+    if long_account and addresses:
         for base, buffer in _image_key_buffers(handle, heaps, deadline, cancel):
-            for pointer in pointers:
-                cancel()
-                if time.monotonic() >= deadline:
-                    return
-                offset = buffer.find(pointer)
-                while offset >= 0:
-                    cancel()
-                    if time.monotonic() >= deadline:
-                        return
-                    value = candidate(base + offset)
-                    if value is not None:
-                        yield value
-                    offset = buffer.find(pointer, offset + 1)
-    if diagnostics is not None:
-        diagnostics['account_objects'] = diagnostics.get('account_objects', 0) + len(objects)
+            yield from pointer_candidates(base, buffer, deadline)
 
 
 def find_dat_aes_key(sample_path: str,pids=None,progress=None,cancel=None,timeout=30,sample_paths=(),diagnostics=None,wxid=''):
