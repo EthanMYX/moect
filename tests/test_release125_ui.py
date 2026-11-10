@@ -451,7 +451,8 @@ class Release125UiTests(unittest.TestCase):
         assert_fitted()
         page.keyboard.press('Escape')
         dialog.wait_for(state='hidden')
-        self.assertFalse(page.evaluate('document.documentElement.classList.contains("moect-image-open")'))
+        # Native dialog close cleanup is queued after the dialog becomes hidden.
+        page.wait_for_function('!document.documentElement.classList.contains("moect-image-open")', timeout=1000)
         self.assertEqual(errors, [])
 
     def test_official_filter_excludes_normal_friends_and_supports_batch_selection(self):
