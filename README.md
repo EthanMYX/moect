@@ -1,5 +1,15 @@
 [![Moect 会话、朋友圈与表情包，本地珍藏](docs/images/banner.png?v=5394f334b97e)](https://github.com/mofan6/Moect/releases/latest)
 
+### 重要公告
+
+因个人近期备考压力较大，**Moect 将暂停更新至 12 月 23 日**，期间仅处理影响范围较广的重大问题。
+
+欢迎通过 **[Issues](https://github.com/mofan6/Moect/issues)** 反馈问题、提交建议，或通过 **[Pull Requests](https://github.com/mofan6/Moect/pulls)** 贡献代码，考研结束后将集中处理。
+
+为防止腾讯潜在 DMCA 投诉导致项目失联，现建立备用 QQ 交流群：**1132072669**
+
+感谢大家的理解与支持！
+
 **Moect 是一个在 Windows 上读取、整理与导出微信聊天记录的桌面工具。**
 
 把好友和群聊、朋友圈与表情包留在自己的电脑里，随可用的头像、图片、视频和表情一起归档。导出的 HTML 可以离线阅读、搜索、按时间筛选，也可以展开合并转发。
